@@ -1,4 +1,4 @@
-# QGrid Studio — Quantum Microgrid Load Balancing & IBM Qiskit Lab
+# QGrid Digital Twin — Quantum Microgrid Load Balancing & IBM Qiskit Lab
 
 **QGrid Studio** is a full-stack quantum-assisted rural microgrid load-balancing digital twin and live **IBM Quantum Platform (SamplerV2)** execution studio built with React, TypeScript, Vite, Tailwind CSS, Three.js, D3, and Express.
 
