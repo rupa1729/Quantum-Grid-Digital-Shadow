@@ -44,3 +44,26 @@
     animation: none;
   }
 }
+
+/* Shared hover polish for KPI tiles and diagnostic cards */
+.card-interactive {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: rgb(15 98 254 / 0.5);
+  box-shadow: 0 6px 16px -6px rgb(15 23 42 / 0.18);
+}
+
+.dark .card-interactive:hover {
+  box-shadow: 0 6px 16px -6px rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-interactive,
+  .card-interactive:hover {
+    transform: none;
+    transition: none;
+  }
+}

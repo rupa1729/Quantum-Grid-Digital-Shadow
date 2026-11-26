@@ -1,3 +1,5 @@
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import { InfoTooltip } from '../components/InfoTooltip';
 import { useMemo, useState } from 'react';
 import { Play } from 'lucide-react';
 import type {
@@ -80,37 +82,37 @@ export function KernelsQAView({
     <div className="space-y-6">
       {/* QA Validation KPI Strip */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             QA Validation Pass Rate
           </div>
           <div className="mt-1.5 text-2xl font-mono font-semibold text-[#15803D] dark:text-[#42BE65] tabular-nums">
-            {qaStats.passRate}%
+            <AnimatedNumber value={Number(qaStats.passRate)} decimals={1} suffix="%" />
           </div>
           <div className="mt-1.5 text-xs text-slate-500 dark:text-[#A8A8A8]">
             {qaRecords.length} benchmark iterations logged
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Peak Kernel Alignment
           </div>
           <div className="mt-1.5 text-2xl font-mono font-semibold text-[#0F62FE] dark:text-[#78A9FF] tabular-nums">
-            {qaStats.bestAlignment}
+            <AnimatedNumber value={Number(qaStats.bestAlignment)} decimals={3} />
           </div>
           <div className="mt-1.5 text-xs text-slate-500 dark:text-[#A8A8A8]">
             ZZFeatureMap target Gram matrix
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Quantum vs Classical Mean
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-              {qaStats.avgQuantumAcc}%
+              <AnimatedNumber value={Number(qaStats.avgQuantumAcc)} decimals={1} suffix="%" />
             </span>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
               vs {qaStats.avgClassicalAcc}%
@@ -121,12 +123,12 @@ export function KernelsQAView({
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Active Circuit Fidelity
           </div>
           <div className="mt-1.5 text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-            {(circuitResult.fidelity * 100).toFixed(2)}%
+            <AnimatedNumber value={circuitResult.fidelity * 100} decimals={2} suffix="%" />
           </div>
           <div className="mt-1.5 text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
             Approx Ratio {circuitResult.approximationRatio.toFixed(3)} · {circuitResult.executionMs} ms
@@ -162,6 +164,7 @@ export function KernelsQAView({
               className="block text-xs font-medium text-slate-600 dark:text-[#A8A8A8] mb-1"
             >
               Ansatz / Kernel
+              <InfoTooltip text="QUBO is the grid load-balancing problem rewritten as yes/no choices that a quantum computer can score; QAOA is a circuit that searches for the best choices." />
             </label>
             <select
               id="ansatz-select"
@@ -202,6 +205,7 @@ export function KernelsQAView({
               className="block text-xs font-medium text-slate-600 dark:text-[#A8A8A8] mb-1"
             >
               Circuit Depth (p)
+              <InfoTooltip text="How many times the quantum circuit repeats its steps. More layers can give better answers but run slower and noisier." />
             </label>
             <select
               id="layers-select"

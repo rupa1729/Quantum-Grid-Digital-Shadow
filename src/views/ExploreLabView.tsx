@@ -1,3 +1,5 @@
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import { InfoTooltip } from '../components/InfoTooltip';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
@@ -92,6 +94,8 @@ interface ExploreLabViewProps {
   }) => Promise<void> | void;
   onLoadIntoLiveMonitor: (topology: GridTopology) => void;
 }
+
+const decimalsOf = (n: number): number => String(n).split('.')[1]?.length ?? 0;
 
 export function ExploreLabView({
   activeBackend,
@@ -808,6 +812,7 @@ export function ExploreLabView({
             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-[#C6C6C6]">
               <Layers className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
               <span>Quantum / Ising Algorithm, Layers (p) & Classical Optimizer</span>
+              <InfoTooltip text="An Ising Hamiltonian is an energy formula where the lowest-energy state is the best grid layout, so the solver hunts for that minimum." />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -849,7 +854,8 @@ export function ExploreLabView({
 
               <div>
                 <label htmlFor="explore-layers-p" className="block text-[11px] font-medium text-slate-600 dark:text-[#A8A8A8] mb-1">
-                  Ansatz Layers (p)
+                  QAOA Depth (p)
+                  <InfoTooltip text="How many times the quantum circuit repeats its steps. More layers can give better answers but run slower and noisier." />
                 </label>
                 <select
                   id="explore-layers-p"
@@ -892,8 +898,9 @@ export function ExploreLabView({
                 <Cpu className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
                 IBM Simulator & Hardware Capabilities
               </span>
-              <span className="text-[11px] font-mono text-slate-500 dark:text-[#A8A8A8]">
+              <span className="inline-flex items-center text-[11px] font-mono text-slate-500 dark:text-[#A8A8A8]">
                 SamplerV2
+                <InfoTooltip text="IBM's tool for running a quantum circuit many times and reporting how often each answer appears." />
               </span>
             </div>
 
@@ -1065,6 +1072,7 @@ export function ExploreLabView({
           <div className="border-t border-slate-200 dark:border-[#393939] pt-4">
             <div className="text-xs font-medium text-slate-700 dark:text-[#C6C6C6] mb-2">
               QUBO Penalty Terms ({constraints.length} Active)
+              <InfoTooltip text="QUBO turns the grid problem into yes/no choices; each penalty term adds a cost when a rule such as a line limit is broken." />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {CONSTRAINT_CATALOG.map((c) => {
@@ -1114,258 +1122,25 @@ export function ExploreLabView({
             </button>
           </div>
 
-          {/* 5. Real IBM Qiskit / QPU Job Execution Bridge */}
-          <div className="border-t border-slate-200 dark:border-[#393939] pt-4 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800 dark:text-[#F4F4F4]">
-                <Server className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
-                <span>Real IBM Qiskit Job Execution</span>
-              </div>
-              <span className="font-mono text-[10px] font-medium text-slate-600 dark:text-[#A8A8A8]">
-                {qiskitCaps?.activeMode === 'ibm_cloud_rest'
-                  ? `IBM Cloud REST (${qiskitCaps.ibmRegion})`
-                  : qiskitCaps?.activeMode === 'qiskit_python_service'
-                  ? 'Python Qiskit Service'
-                  : qiskitCaps?.activeMode === 'qiskit_local_python'
-                  ? `Qiskit ${qiskitCaps.localQiskitVersion ?? ''} Local`
-                  : 'Runtime Not Configured'}
-              </span>
-            </div>
-
-            <div className="rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50/70 dark:bg-[#1E1E1E] p-3 space-y-2.5">
-              {qiskitCaps && qiskitCaps.liveBackends.length > 0 && (
-                <div>
-                  <label
-                    htmlFor="explore-live-ibm-qpu"
-                    className="block text-[11px] text-slate-600 dark:text-[#C6C6C6] mb-1"
-                  >
-                    Target Live IBM Quantum Processor
-                  </label>
-                  <select
-                    id="explore-live-ibm-qpu"
-                    value={selectedLiveIbmBackend}
-                    onChange={(e) => setSelectedLiveIbmBackend(e.target.value)}
-                    className="w-full rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-2.5 py-1.5 font-mono text-xs text-slate-800 dark:text-[#F4F4F4] focus:border-[#0F62FE] focus:outline-none"
-                  >
-                    {qiskitCaps.liveBackends.map((b) => (
-                      <option key={b.name} value={b.name}>
-                        {b.name} ({b.qubits}q · {b.pendingJobs} queued · {b.status})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  data-testid="execute-batch-qiskit-btn"
-                  onClick={() => void handleExecuteBatchRealQiskit()}
-                  disabled={
-                    isExecutingBatchQiskit ||
-                    isExecutingQiskit ||
-                    !qiskitCaps?.ibmCloudRestConfigured ||
-                    !qiskitCaps?.ibmInstanceConfigured
-                  }
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 dark:bg-[#0F62FE] px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-[#0353E9] disabled:opacity-55 transition-colors whitespace-nowrap"
-                >
-                  <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                  {isExecutingBatchQiskit
-                    ? 'Submitting 5-Solver Multi-PUB Batch...'
-                    : `Run All 5 Gate Solvers on ${selectedLiveIbmBackend || 'IBM QPU'}`}
-                </button>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    data-testid="execute-real-qiskit-btn"
-                    onClick={() => void handleExecuteRealQiskit()}
-                    disabled={isExecutingQiskit || isExecutingBatchQiskit}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[#0F62FE] bg-white dark:bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#0F62FE] dark:text-[#78A9FF] hover:bg-[#0F62FE]/8 dark:hover:bg-[#353535] disabled:opacity-60 transition-colors whitespace-nowrap"
-                  >
-                    <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
-                    {isExecutingQiskit
-                      ? 'Submitting Single PUB...'
-                      : `Run ${quantumAlgorithm} Only`}
-                  </button>
-
-                  {qiskitJobResult &&
-                    (qiskitJobResult.status === 'QUEUED' || qiskitJobResult.status === 'RUNNING') && (
-                      <button
-                        type="button"
-                        onClick={() => void handlePollQiskitJob()}
-                        disabled={isPollingQiskit}
-                        className="rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#262626] px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-[#E0E0E0] hover:bg-slate-100 dark:hover:bg-[#353535] disabled:opacity-60 whitespace-nowrap"
-                      >
-                        {isPollingQiskit ? 'Polling...' : 'Poll Now'}
-                      </button>
-                    )}
-                </div>
-              </div>
-
-              <p className="text-[10px] leading-relaxed text-slate-500 dark:text-[#A8A8A8]">
-                Multi-PUB batch packs QAOA, CVaR-QAOA, BF-DCQO, VQA &amp; VarQITE into one SamplerV2 job on real IBM hardware and updates the comparison table automatically.
-              </p>
-
-              {qiskitCaps &&
-                (qiskitCaps.activeMode === 'unconfigured' ||
-                  (qiskitCaps.ibmCloudRestConfigured && !qiskitCaps.ibmInstanceConfigured)) && (
-                  <p className="text-[11px] leading-relaxed text-slate-600 dark:text-[#A8A8A8]">
-                    {qiskitCaps.setupHint}
-                  </p>
-                )}
-
-              {qiskitJobError && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 rounded border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/40 p-2 text-[11px] text-amber-900 dark:text-amber-300"
-                >
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span>{qiskitJobError}</span>
-                </div>
-              )}
-
-              {qiskitJobResult && (
-                <div className="rounded border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] p-2.5 space-y-2 text-[11px]">
-                  <div className="flex flex-wrap items-center justify-between gap-1.5">
-                    <span className="font-mono font-semibold text-slate-900 dark:text-[#F4F4F4]">
-                      Job {qiskitJobResult.jobId}
-                    </span>
-                    <span
-                      className={`font-mono font-semibold ${
-                        qiskitJobResult.status === 'COMPLETED'
-                          ? 'text-[#15803D] dark:text-[#42BE65]'
-                          : qiskitJobResult.status === 'FAILED'
-                          ? 'text-[#B91C1C] dark:text-[#FA4D56]'
-                          : 'text-[#0F62FE] dark:text-[#78A9FF]'
-                      }`}
-                    >
-                      {qiskitJobResult.status} · {qiskitJobResult.backendName}
-                    </span>
-                  </div>
-
-                  {(qiskitJobResult.status === 'QUEUED' || qiskitJobResult.status === 'RUNNING') && (
-                    <div className="text-[10px] text-slate-500 dark:text-[#A8A8A8]">
-                      Auto-polling IBM Quantum every 4s{qiskitJobResult.isBatch ? ' (5 PUBs in queue)' : ''}...
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px] text-slate-600 dark:text-[#C6C6C6]">
-                    <div>
-                      Qubits: <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.qubits}q</span> · Depth:{' '}
-                      <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.transpiledDepth}</span>
-                    </div>
-                    <div>
-                      2Q Gates: <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.twoQubitGateCount}</span> · Shots:{' '}
-                      <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.shots}</span>
-                    </div>
-                    {qiskitJobResult.optimalBitstring && (
-                      <div className="col-span-2">
-                        Best ({qiskitJobResult.algorithm}):{' '}
-                        <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.optimalBitstring}</span> · E ={' '}
-                        <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.achievedQuboEnergy}</span>
-                        {qiskitJobResult.demandMetPct !== undefined && (
-                          <>
-                            {' '}· Demand Met:{' '}
-                            <span className="text-[#15803D] dark:text-[#42BE65]">{qiskitJobResult.demandMetPct}%</span>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {qiskitJobResult.errorMessage && (
-                      <div className="col-span-2 rounded border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-2 font-sans text-[11px] text-red-800 dark:text-red-300">
-                        {qiskitJobResult.errorMessage}
-                      </div>
-                    )}
-                  </div>
-
-                  {qiskitJobResult.pubResults && qiskitJobResult.pubResults.length > 1 && (
-                    <div className="border-t border-slate-200 dark:border-[#393939] pt-2 space-y-1">
-                      <div className="text-[10px] font-semibold text-slate-600 dark:text-[#A8A8A8]">
-                        Multi-PUB IBM QPU Breakdown ({qiskitJobResult.pubResults.length} Gate Solvers)
-                      </div>
-                      <div className="divide-y divide-slate-100 dark:divide-[#2E2E2E] font-mono text-[10px]">
-                        {qiskitJobResult.pubResults.map((pub) => (
-                          <div key={pub.algorithm} className="flex items-center justify-between py-1 gap-2">
-                            <span className="font-semibold text-slate-800 dark:text-[#F4F4F4]">
-                              {pub.algorithm}
-                            </span>
-                            <span className="text-slate-500 dark:text-[#A8A8A8]">
-                              {pub.twoQubitGateCount} 2Q
-                            </span>
-                            {pub.approxRatio !== undefined ? (
-                              <span className="text-[#15803D] dark:text-[#42BE65]">
-                                r={pub.approxRatio.toFixed(3)} · {pub.demandMetPct}%
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">Queued</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {qiskitJobResult.openQasm3 && (
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setShowOpenQasm((v) => !v)}
-                        className="text-[11px] font-medium text-[#0F62FE] dark:text-[#78A9FF] hover:underline"
-                      >
-                        {showOpenQasm ? 'Hide OpenQASM 3.0 ISA Circuit' : 'View Submitted OpenQASM 3.0 ISA Circuit'}
-                      </button>
-                      {showOpenQasm && (
-                        <div className="mt-1.5 space-y-1.5">
-                          {qiskitJobResult.pubResults && qiskitJobResult.pubResults.length > 1 && (
-                            <div className="flex flex-wrap gap-1">
-                              {qiskitJobResult.pubResults.map((pub, idx) => (
-                                <button
-                                  key={pub.algorithm}
-                                  type="button"
-                                  onClick={() => setSelectedPubQasmIdx(idx)}
-                                  className={`rounded px-1.5 py-0.5 font-mono text-[10px] border ${
-                                    selectedPubQasmIdx === idx
-                                      ? 'border-[#0F62FE] bg-[#0F62FE] text-white'
-                                      : 'border-slate-300 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] text-slate-700 dark:text-[#C6C6C6]'
-                                  }`}
-                                >
-                                  {pub.algorithm}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <pre className="max-h-40 overflow-auto rounded bg-slate-900 p-2 font-mono text-[10px] text-slate-100">
-                            {qiskitJobResult.pubResults?.[selectedPubQasmIdx]?.openQasm3 ??
-                              qiskitJobResult.openQasm3}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* RIGHT PANEL: Deployment Metrics + 4-Tab QUBO / 9-Solver / Convergence / Simulation Studio */}
         <div className="xl:col-span-7 space-y-6">
           {/* Top 4 Rural Microgrid Deployment Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono tabular-nums">
-            <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
+            <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
               <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8]">
                 % Demand Met
               </div>
               <div className="mt-1 text-xl font-semibold text-[#15803D] dark:text-[#42BE65]">
-                {selectedSolverRow.demandMetPct}%
+                <AnimatedNumber value={selectedSolverRow.demandMetPct} decimals={decimalsOf(selectedSolverRow.demandMetPct)} suffix="%" />
               </div>
               <div className="mt-0.5 font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">
                 {greedyRow ? `vs ${greedyRow.demandMetPct}% Greedy` : 'Greedy baseline'}
               </div>
             </div>
 
-            <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
+            <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
               <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8]">
                 Cost Saved
               </div>
@@ -1373,33 +1148,35 @@ export function ExploreLabView({
                 className="mt-1 text-lg sm:text-xl font-semibold text-[#0F62FE] dark:text-[#78A9FF] truncate"
                 title={`$${selectedSolverRow.costSavedDailyUsd.toLocaleString()}/day`}
               >
-                {selectedSolverRow.costSavedDailyUsd >= 1_000_000
-                  ? `$${(selectedSolverRow.costSavedDailyUsd / 1_000_000).toFixed(2)}M/d`
-                  : `$${selectedSolverRow.costSavedDailyUsd.toLocaleString()}/d`}
+                {selectedSolverRow.costSavedDailyUsd >= 1_000_000 ? (
+                  <AnimatedNumber value={selectedSolverRow.costSavedDailyUsd / 1_000_000} decimals={2} prefix="$" suffix="M/d" />
+                ) : (
+                  <AnimatedNumber value={selectedSolverRow.costSavedDailyUsd} grouping prefix="$" suffix="/d" />
+                )}
               </div>
               <div className="mt-0.5 font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">
                 −{selectedSolverRow.costSavedPct}% diesel/import
               </div>
             </div>
 
-            <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
+            <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
               <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8]">
                 Clean Energy Used
               </div>
               <div className="mt-1 text-xl font-semibold text-slate-900 dark:text-[#F4F4F4]">
-                {selectedSolverRow.renewableUtilPct}%
+                <AnimatedNumber value={selectedSolverRow.renewableUtilPct} decimals={decimalsOf(selectedSolverRow.renewableUtilPct)} suffix="%" />
               </div>
               <div className="mt-0.5 font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">
                 {saRow ? `vs ${saRow.renewableUtilPct}% SA baseline` : 'SA baseline'}
               </div>
             </div>
 
-            <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
+            <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-3.5">
               <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8]">
                 Approx Ratio · Fidelity
               </div>
               <div className="mt-1 text-xl font-semibold text-slate-900 dark:text-[#F4F4F4]">
-                {selectedSolverRow.approxRatio.toFixed(3)}
+                <AnimatedNumber value={selectedSolverRow.approxRatio} decimals={3} />
               </div>
               <div className="mt-0.5 font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">
                 {selectedSolverRow.fidelityPct}% · {selectedSolverRow.algorithm}
@@ -1918,6 +1695,247 @@ export function ExploreLabView({
                 />
               </div>
             )}
+          </div>
+
+          {/* 5. Real IBM Qiskit / QPU Job Execution Bridge */}
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800 dark:text-[#F4F4F4]">
+                <Server className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
+                <span>Real IBM Qiskit Job Execution</span>
+                <span className="relative flex h-2 w-2" title="Live QPU status">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#24A148] opacity-60 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#24A148]" />
+                </span>
+                <span className="rounded-sm border border-slate-300 dark:border-[#525252] px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-[#C6C6C6] whitespace-nowrap">
+                  IBM Quantum Heron r2
+                </span>
+              </div>
+              <span className="font-mono text-[10px] font-medium text-slate-600 dark:text-[#A8A8A8]">
+                {qiskitCaps?.activeMode === 'ibm_cloud_rest'
+                  ? `IBM Cloud REST (${qiskitCaps.ibmRegion})`
+                  : qiskitCaps?.activeMode === 'qiskit_python_service'
+                  ? 'Python Qiskit Service'
+                  : qiskitCaps?.activeMode === 'qiskit_local_python'
+                  ? `Qiskit ${qiskitCaps.localQiskitVersion ?? ''} Local`
+                  : 'Runtime Not Configured'}
+              </span>
+            </div>
+
+            <div className="rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50/70 dark:bg-[#1E1E1E] p-3 space-y-2.5">
+              {qiskitCaps && qiskitCaps.liveBackends.length > 0 && (
+                <div>
+                  <label
+                    htmlFor="explore-live-ibm-qpu"
+                    className="block text-[11px] text-slate-600 dark:text-[#C6C6C6] mb-1"
+                  >
+                    Target Live IBM Quantum Processor
+                  </label>
+                  <select
+                    id="explore-live-ibm-qpu"
+                    value={selectedLiveIbmBackend}
+                    onChange={(e) => setSelectedLiveIbmBackend(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-2.5 py-1.5 font-mono text-xs text-slate-800 dark:text-[#F4F4F4] focus:border-[#0F62FE] focus:outline-none"
+                  >
+                    {qiskitCaps.liveBackends.map((b) => (
+                      <option key={b.name} value={b.name}>
+                        {b.name} ({b.qubits}q · {b.pendingJobs} queued · {b.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  data-testid="execute-batch-qiskit-btn"
+                  onClick={() => void handleExecuteBatchRealQiskit()}
+                  disabled={
+                    isExecutingBatchQiskit ||
+                    isExecutingQiskit ||
+                    !qiskitCaps?.ibmCloudRestConfigured ||
+                    !qiskitCaps?.ibmInstanceConfigured
+                  }
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-900 dark:bg-[#0F62FE] px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-[#0353E9] disabled:opacity-55 transition-colors whitespace-nowrap"
+                >
+                  <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                  {isExecutingBatchQiskit
+                    ? 'Submitting 5-Solver Multi-PUB Batch...'
+                    : `Run All 5 Gate Solvers on ${selectedLiveIbmBackend || 'IBM QPU'}`}
+                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="execute-real-qiskit-btn"
+                    onClick={() => void handleExecuteRealQiskit()}
+                    disabled={isExecutingQiskit || isExecutingBatchQiskit}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[#0F62FE] bg-white dark:bg-[#161616] px-3 py-1.5 text-xs font-medium text-[#0F62FE] dark:text-[#78A9FF] hover:bg-[#0F62FE]/8 dark:hover:bg-[#353535] disabled:opacity-60 transition-colors whitespace-nowrap"
+                  >
+                    <Cpu className="h-3.5 w-3.5" aria-hidden="true" />
+                    {isExecutingQiskit
+                      ? 'Submitting Single PUB...'
+                      : `Run ${quantumAlgorithm} Only`}
+                  </button>
+
+                  {qiskitJobResult &&
+                    (qiskitJobResult.status === 'QUEUED' || qiskitJobResult.status === 'RUNNING') && (
+                      <button
+                        type="button"
+                        onClick={() => void handlePollQiskitJob()}
+                        disabled={isPollingQiskit}
+                        className="rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#262626] px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-[#E0E0E0] hover:bg-slate-100 dark:hover:bg-[#353535] disabled:opacity-60 whitespace-nowrap"
+                      >
+                        {isPollingQiskit ? 'Polling...' : 'Poll Now'}
+                      </button>
+                    )}
+                </div>
+              </div>
+
+              <p className="text-[10px] leading-relaxed text-slate-500 dark:text-[#A8A8A8]">
+                Multi-PUB batch packs QAOA, CVaR-QAOA, BF-DCQO, VQA &amp; VarQITE into one SamplerV2 job on real IBM hardware and updates the comparison table automatically.
+              </p>
+
+              {qiskitCaps &&
+                (qiskitCaps.activeMode === 'unconfigured' ||
+                  (qiskitCaps.ibmCloudRestConfigured && !qiskitCaps.ibmInstanceConfigured)) && (
+                  <p className="text-[11px] leading-relaxed text-slate-600 dark:text-[#A8A8A8]">
+                    {qiskitCaps.setupHint}
+                  </p>
+                )}
+
+              {qiskitJobError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/40 p-2 text-[11px] text-amber-900 dark:text-amber-300"
+                >
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>{qiskitJobError}</span>
+                </div>
+              )}
+
+              {qiskitJobResult && (
+                <div className="rounded border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] p-2.5 space-y-2 text-[11px]">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <span className="font-mono font-semibold text-slate-900 dark:text-[#F4F4F4]">
+                      Job {qiskitJobResult.jobId}
+                    </span>
+                    <span
+                      className={`font-mono font-semibold ${
+                        qiskitJobResult.status === 'COMPLETED'
+                          ? 'text-[#15803D] dark:text-[#42BE65]'
+                          : qiskitJobResult.status === 'FAILED'
+                          ? 'text-[#B91C1C] dark:text-[#FA4D56]'
+                          : 'text-[#0F62FE] dark:text-[#78A9FF]'
+                      }`}
+                    >
+                      {qiskitJobResult.status} · {qiskitJobResult.backendName}
+                    </span>
+                  </div>
+
+                  {(qiskitJobResult.status === 'QUEUED' || qiskitJobResult.status === 'RUNNING') && (
+                    <div className="text-[10px] text-slate-500 dark:text-[#A8A8A8]">
+                      Auto-polling IBM Quantum every 4s{qiskitJobResult.isBatch ? ' (5 PUBs in queue)' : ''}...
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px] text-slate-600 dark:text-[#C6C6C6]">
+                    <div>
+                      Qubits: <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.qubits}q</span> · Depth:{' '}
+                      <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.transpiledDepth}</span>
+                    </div>
+                    <div>
+                      2Q Gates: <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.twoQubitGateCount}</span> · Shots:{' '}
+                      <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.shots}</span>
+                    </div>
+                    {qiskitJobResult.optimalBitstring && (
+                      <div className="col-span-2">
+                        Best ({qiskitJobResult.algorithm}):{' '}
+                        <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.optimalBitstring}</span> · E ={' '}
+                        <span className="text-slate-900 dark:text-[#F4F4F4]">{qiskitJobResult.achievedQuboEnergy}</span>
+                        {qiskitJobResult.demandMetPct !== undefined && (
+                          <>
+                            {' '}· Demand Met:{' '}
+                            <span className="text-[#15803D] dark:text-[#42BE65]">{qiskitJobResult.demandMetPct}%</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {qiskitJobResult.errorMessage && (
+                      <div className="col-span-2 rounded border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-2 font-sans text-[11px] text-red-800 dark:text-red-300">
+                        {qiskitJobResult.errorMessage}
+                      </div>
+                    )}
+                  </div>
+
+                  {qiskitJobResult.pubResults && qiskitJobResult.pubResults.length > 1 && (
+                    <div className="border-t border-slate-200 dark:border-[#393939] pt-2 space-y-1">
+                      <div className="text-[10px] font-semibold text-slate-600 dark:text-[#A8A8A8]">
+                        Multi-PUB IBM QPU Breakdown ({qiskitJobResult.pubResults.length} Gate Solvers)
+                      </div>
+                      <div className="divide-y divide-slate-100 dark:divide-[#2E2E2E] font-mono text-[10px]">
+                        {qiskitJobResult.pubResults.map((pub) => (
+                          <div key={pub.algorithm} className="flex items-center justify-between py-1 gap-2">
+                            <span className="font-semibold text-slate-800 dark:text-[#F4F4F4]">
+                              {pub.algorithm}
+                            </span>
+                            <span className="text-slate-500 dark:text-[#A8A8A8]">
+                              {pub.twoQubitGateCount} 2Q
+                            </span>
+                            {pub.approxRatio !== undefined ? (
+                              <span className="text-[#15803D] dark:text-[#42BE65]">
+                                r={pub.approxRatio.toFixed(3)} · {pub.demandMetPct}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Queued</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {qiskitJobResult.openQasm3 && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setShowOpenQasm((v) => !v)}
+                        className="text-[11px] font-medium text-[#0F62FE] dark:text-[#78A9FF] hover:underline"
+                      >
+                        {showOpenQasm ? 'Hide OpenQASM 3.0 ISA Circuit' : 'View Submitted OpenQASM 3.0 ISA Circuit'}
+                      </button>
+                      {showOpenQasm && (
+                        <div className="mt-1.5 space-y-1.5">
+                          {qiskitJobResult.pubResults && qiskitJobResult.pubResults.length > 1 && (
+                            <div className="flex flex-wrap gap-1">
+                              {qiskitJobResult.pubResults.map((pub, idx) => (
+                                <button
+                                  key={pub.algorithm}
+                                  type="button"
+                                  onClick={() => setSelectedPubQasmIdx(idx)}
+                                  className={`rounded px-1.5 py-0.5 font-mono text-[10px] border ${
+                                    selectedPubQasmIdx === idx
+                                      ? 'border-[#0F62FE] bg-[#0F62FE] text-white'
+                                      : 'border-slate-300 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] text-slate-700 dark:text-[#C6C6C6]'
+                                  }`}
+                                >
+                                  {pub.algorithm}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <pre className="max-h-40 overflow-auto rounded bg-slate-900 p-2 font-mono text-[10px] text-slate-100">
+                            {qiskitJobResult.pubResults?.[selectedPubQasmIdx]?.openQasm3 ??
+                              qiskitJobResult.openQasm3}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Compact Backend API Endpoint Indicator */}

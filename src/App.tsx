@@ -1,3 +1,4 @@
+import { PulsingDot } from './components/PulsingDot';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, Moon, Sun, Zap } from 'lucide-react';
 import type {
@@ -651,21 +652,25 @@ export default function App() {
               <div className="text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8] truncate">
                 {pageMeta.breadcrumb}
               </div>
-              <h1 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-[#F4F4F4] leading-tight truncate">
+              <h1 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-[#F4F4F4] leading-tight truncate" title={pageMeta.title}>
                 {pageMeta.title}
               </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div
               data-testid="header-engine-status"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap"
             >
-              <span className={`h-2 w-2 rounded-full ${headerStatusMeta.dotClass}`} aria-hidden="true" />
+              {backendStatus.mode === 'ibm_quantum_live' ? (
+                <PulsingDot variant="green" />
+              ) : (
+                <span className={`h-2 w-2 rounded-full ${headerStatusMeta.dotClass}`} aria-hidden="true" />
+              )}
               <span className={headerStatusMeta.textClass}>{headerStatusMeta.label}</span>
             </div>
-            <div className="hidden xl:flex items-center gap-2 text-xs text-slate-500 dark:text-[#A8A8A8] whitespace-nowrap">
+            <div className="hidden min-[1700px]:flex items-center gap-2 text-xs text-slate-500 dark:text-[#A8A8A8] whitespace-nowrap">
               <span>{topology.name}</span>
               <span aria-hidden="true">·</span>
               <span className="font-mono text-slate-700 dark:text-[#E0E0E0]">{activeBackend}</span>

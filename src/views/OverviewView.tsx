@@ -8,7 +8,6 @@ import {
   Moon,
   Pause,
   Play,
-  Radio,
   RefreshCw,
   RotateCcw,
   Search,
@@ -30,6 +29,8 @@ import type {
 import { CLIMATE_PRESETS, LIVE_REGIONS } from '../constants';
 import { D3GridVisualizer } from '../components/D3GridVisualizer';
 import { ThreeGridVisualizer } from '../components/ThreeGridVisualizer';
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import { PulsingDot } from '../components/PulsingDot';
 import { StatusIndicator } from '../components/StatusIndicator';
 
 interface OverviewViewProps {
@@ -192,11 +193,11 @@ export function OverviewView({
     <div className="space-y-6">
       {/* Top KPI Strip */}
       <section aria-label="Grid summary metrics" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">Grid Health Index</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-              {summary.healthIndex}%
+              <AnimatedNumber value={summary.healthIndex} decimals={Number.isInteger(summary.healthIndex) ? 0 : 1} suffix="%" />
             </span>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
               {summary.healthyCount}G / {summary.warningCount}Y / {summary.alarmingCount}R
@@ -207,13 +208,13 @@ export function OverviewView({
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Quantum vs Classical Gain
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-[#0F62FE] dark:text-[#78A9FF] tabular-nums">
-              +{accuracyEdge}%
+              <AnimatedNumber value={Number(accuracyEdge)} decimals={1} prefix="+" suffix="%" />
             </span>
             <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">dispatch accuracy</span>
           </div>
@@ -222,13 +223,13 @@ export function OverviewView({
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Grid Load & Line Loss
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-              {summary.totalLoadMW}
+              <AnimatedNumber value={Number(summary.totalLoadMW)} decimals={Number.isInteger(Number(summary.totalLoadMW)) ? 0 : 1} />
             </span>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8]">MW</span>
           </div>
@@ -240,7 +241,7 @@ export function OverviewView({
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Active Grid Alerts
           </div>
@@ -254,7 +255,7 @@ export function OverviewView({
                   : 'text-[#16A34A] dark:text-[#42BE65]'
               }`}
             >
-              {summary.alarmingCount + summary.warningCount}
+              <AnimatedNumber value={summary.alarmingCount + summary.warningCount} />
             </span>
             <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">stressed buses</span>
           </div>
@@ -400,7 +401,7 @@ export function OverviewView({
 
               {liveSlotIndex === liveStreamPayload.currentSlotIndex ? (
                 <span className="inline-flex items-center gap-1 rounded border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                  <Radio className="h-2.5 w-2.5" aria-hidden="true" />
+                  <PulsingDot variant="green" size="h-1.5 w-1.5" />
                   Live Now
                 </span>
               ) : (

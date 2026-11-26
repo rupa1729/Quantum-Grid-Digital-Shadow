@@ -346,6 +346,7 @@ export function D3BenchmarkBarChart({
     const svgEl = svgRef.current;
     if (!svgEl || topRecords.length === 0) return;
 
+    const animateIn = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const svg = d3.select(svgEl);
     svg.selectAll('*').remove();
 
@@ -415,18 +416,29 @@ export function D3BenchmarkBarChart({
       .attr('font-weight', '500')
       .attr('fill', labelColor);
 
-    g.selectAll('rect.bench-bar')
+    const bars = g
+      .selectAll<SVGRectElement, KernelQARecord>('rect.bench-bar')
       .data(topRecords)
       .join('rect')
       .attr('class', 'bench-bar')
       .attr('x', 0)
       .attr('y', (d) => y(`${d.modelName} (${d.runId})`) ?? 0)
-      .attr('width', (d) => Math.max(4, x(d.accuracyPct)))
+      .attr('width', animateIn ? 4 : (d) => Math.max(4, x(d.accuracyPct)))
       .attr('height', y.bandwidth())
       .attr('rx', 3)
       .attr('fill', (d) => (d.solverType === 'quantum' ? quantumColor : classicalColor));
 
-    g.selectAll('text.bench-val')
+    if (animateIn) {
+      bars
+        .transition()
+        .delay((_, i) => i * 70)
+        .duration(800)
+        .ease(d3.easeCubicOut)
+        .attr('width', (d) => Math.max(4, x(d.accuracyPct)));
+    }
+
+    const vals = g
+      .selectAll<SVGTextElement, KernelQARecord>('text.bench-val')
       .data(topRecords)
       .join('text')
       .attr('x', (d) => x(d.accuracyPct) + 8)
@@ -435,7 +447,19 @@ export function D3BenchmarkBarChart({
       .attr('font-size', '11px')
       .attr('font-weight', '600')
       .attr('fill', valueColor)
-      .text((d) => `${d.accuracyPct.toFixed(1)}%`);
+      .text((d) => `${(animateIn ? 0 : d.accuracyPct).toFixed(1)}%`);
+
+    if (animateIn) {
+      vals
+        .transition()
+        .delay((_, i) => i * 70)
+        .duration(800)
+        .ease(d3.easeCubicOut)
+        .textTween((d) => {
+          const interp = d3.interpolateNumber(0, d.accuracyPct);
+          return (t) => `${interp(t).toFixed(1)}%`;
+        });
+    }
 
     g.selectAll('text.bench-ms')
       .data(topRecords)

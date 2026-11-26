@@ -11,6 +11,8 @@ import {
   Zap,
 } from 'lucide-react';
 import type { GridNode, GridTopology, HealthStatus } from '../types/grid';
+import { motion, useReducedMotion } from 'motion/react';
+import { AnimatedText } from '../components/AnimatedNumber';
 import { StatusIndicator } from '../components/StatusIndicator';
 
 interface DiagnosticsViewProps {
@@ -269,6 +271,8 @@ export function DiagnosticsView({
   onAdjustNodeStress,
 }: DiagnosticsViewProps) {
   const [statusFilter, setStatusFilter] = useState<'all' | HealthStatus>('all');
+  const [hoverHour, setHoverHour] = useState<number | null>(null);
+  const reduceMotion = useReducedMotion();
   const [sortBy, setSortBy] = useState<'utilization' | 'temperature' | 'voltage'>('utilization');
 
   const selectedNode = useMemo(
@@ -473,7 +477,7 @@ export function DiagnosticsView({
         {/* LEFT (7 cols): Node-Specific Capability Profile + Local 1-Hop Ego-Subgraph + 24h Capability Envelope */}
         <div className="xl:col-span-7 space-y-6">
           {/* 1. Role-Specific Hardware & Capability Diagnostics */}
-          <section className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5 space-y-4">
+          <section className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#393939]">
               <div>
                 <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-[#A8A8A8]">
@@ -494,20 +498,23 @@ export function DiagnosticsView({
               {roleDiagnostics.features.map((feat) => (
                 <div
                   key={feat.label}
-                  className="rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-3.5 space-y-2"
+                  className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-3.5 space-y-2"
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-xs font-medium text-slate-700 dark:text-[#C6C6C6]">
                       {feat.label}
                     </span>
                     <span className="text-sm font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums whitespace-nowrap">
-                      {feat.value}
+                      <AnimatedText text={feat.value} />
                     </span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-[#393939] overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-200 ${toneBarClass(feat.tone)}`}
-                      style={{ width: `${Math.max(4, Math.min(100, feat.pct))}%` }}
+                    <motion.div
+                      key={`${selectedNode.id}-${feat.label}`}
+                      className={`h-full rounded-full ${toneBarClass(feat.tone)}`}
+                      initial={{ width: reduceMotion ? `${Math.max(4, Math.min(100, feat.pct))}%` : '0%' }}
+                      animate={{ width: `${Math.max(4, Math.min(100, feat.pct))}%` }}
+                      transition={{ duration: 0.9, ease: 'easeOut' }}
                     />
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-[#A8A8A8]">
@@ -524,7 +531,7 @@ export function DiagnosticsView({
           </section>
 
           {/* 2. Local 1-Hop Ego-Topology (Focused ONLY on selected node & direct neighbors) */}
-          <section className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
+          <section className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-[#393939]">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
@@ -732,8 +739,16 @@ export function DiagnosticsView({
 
             <div className="mt-3">
               <svg
+                key={selectedNode.id}
                 viewBox={`0 0 ${chartW} ${chartH}`}
-                className="w-full h-[195px]"
+                className="w-full h-[195px] touch-pan-y"
+                onPointerMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const vx = ((e.clientX - rect.left) / rect.width) * chartW;
+                  const idx = Math.round(((vx - padL) / (chartW - padL - padR)) * 23);
+                  setHoverHour(Math.max(0, Math.min(23, idx)));
+                }}
+                onPointerLeave={() => setHoverHour(null)}
                 role="img"
                 aria-label={`24-hour capability envelope chart for ${selectedNode.name}`}
               >
@@ -785,22 +800,93 @@ export function DiagnosticsView({
                   strokeWidth={1.3}
                 />
 
-                {/* Classical curve */}
+                <defs>
+                  <clipPath id="envelope-reveal">
+                    <motion.rect
+                      x={0}
+                      y={0}
+                      height={chartH}
+                      initial={{ width: reduceMotion ? chartW : 0 }}
+                      animate={{ width: chartW }}
+                      transition={{ duration: 1.2, ease: 'easeInOut' }}
+                    />
+                  </clipPath>
+                </defs>
+
+                {/* Classical curve (dashed, revealed left-to-right with the same timing) */}
                 <path
                   d={classicalPath}
                   fill="none"
                   stroke={isDark ? '#A8A8A8' : '#64748B'}
                   strokeWidth={2}
                   strokeDasharray="5 3"
+                  clipPath="url(#envelope-reveal)"
                 />
 
                 {/* Quantum QAOA curve */}
-                <path
+                <motion.path
                   d={quantumPath}
                   fill="none"
                   stroke={isDark ? '#78A9FF' : '#0F62FE'}
                   strokeWidth={2.5}
+                  initial={{ pathLength: reduceMotion ? 1 : 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 1.2, ease: 'easeInOut' }}
                 />
+
+                {/* Staggered data point reveal */}
+                {hourlyEnvelope.map((pt, i) => (
+                  <motion.circle
+                    key={pt.hour}
+                    cx={toX(i)}
+                    cy={toY(pt.quantumMW)}
+                    r={hoverHour === i ? 4 : 2}
+                    fill={isDark ? '#78A9FF' : '#0F62FE'}
+                    initial={{ opacity: reduceMotion ? 1 : 0 }}
+                    animate={{ opacity: hoverHour === null || hoverHour === i ? 1 : 0.35 }}
+                    transition={{ delay: reduceMotion ? 0 : (i / 23) * 1.2, duration: 0.25 }}
+                  />
+                ))}
+
+                {/* Hover trace crosshair + floating readout */}
+                {hoverHour !== null && hourlyEnvelope[hoverHour] && (() => {
+                  const pt = hourlyEnvelope[hoverHour];
+                  const x = toX(hoverHour);
+                  const boxW = 112;
+                  const boxX = x > chartW * 0.65 ? x - boxW - 8 : x + 8;
+                  return (
+                    <g pointerEvents="none">
+                      <line
+                        x1={x}
+                        y1={padT}
+                        x2={x}
+                        y2={chartH - padB}
+                        stroke={isDark ? '#8D8D8D' : '#94A3B8'}
+                        strokeWidth={1}
+                        strokeDasharray="2 3"
+                      />
+                      <circle cx={x} cy={toY(pt.classicalMW)} r={3.5} fill={isDark ? '#A8A8A8' : '#64748B'} />
+                      <rect
+                        x={boxX}
+                        y={padT}
+                        width={boxW}
+                        height={50}
+                        rx={4}
+                        fill={isDark ? '#262626' : '#FFFFFF'}
+                        stroke={isDark ? '#525252' : '#CBD5E1'}
+                      />
+                      <text x={boxX + 8} y={padT + 14} fontSize="9" fontFamily="IBM Plex Mono, monospace" fill={isDark ? '#A8A8A8' : '#64748B'}>
+                        {pt.hour}
+                      </text>
+                      <text x={boxX + 8} y={padT + 28} fontSize="10" fontFamily="IBM Plex Mono, monospace" fill={isDark ? '#78A9FF' : '#0F62FE'}>
+                        QAOA {pt.quantumMW} MW
+                      </text>
+                      <text x={boxX + 8} y={padT + 42} fontSize="10" fontFamily="IBM Plex Mono, monospace" fill={isDark ? '#F4F4F4' : '#0F172A'}>
+                        Classical {pt.classicalMW} MW
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {/* X-axis labels */}
                 {[0, 4, 8, 12, 16, 20, 23].map((hr) => (
@@ -823,7 +909,7 @@ export function DiagnosticsView({
 
         {/* RIGHT (5 cols): Live Node Telemetry Controls, Stress Testing, Qubit Coupling & Direct Ties */}
         <div className="xl:col-span-5 space-y-6">
-          <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5 space-y-5">
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5 space-y-5">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#393939]">
               <div>
                 <div className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8]">
