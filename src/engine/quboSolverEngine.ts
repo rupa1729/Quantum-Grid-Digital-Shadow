@@ -30,6 +30,7 @@ import {
   type FullQuboProblem,
   type RealSolverOutput,
   bitsToString,
+  applyFeederPenaltyFloor,
   buildFullQuboProblem,
   computeApproxRatio,
   computeExactSpectrum,
@@ -286,7 +287,7 @@ export function buildFullMicrogridQuboProblem(
 
   // Quadratic couplings Q_ij: thermal congestion & impedance penalty on shared feeders
   // Scales nonlinearly with flowRatio^2 and incorporates series reactance X_ij when provided.
-  const edgeTerms: { i: number; j: number; qij: number }[] = [];
+  const rawEdgeTerms: { i: number; j: number; qij: number; flowRatio: number }[] = [];
   for (const edge of topology.edges) {
     const i = indexById.get(edge.source);
     const j = indexById.get(edge.target);
@@ -304,8 +305,14 @@ export function buildFullMicrogridQuboProblem(
         (0.65 + effectiveImpedance * 7.0),
       2
     );
-    edgeTerms.push({ i, j, qij: coupling });
+    rawEdgeTerms.push({ i, j, qij: coupling, flowRatio });
   }
+
+  // Thermal/capacity floor: on near-limit feeders, co-dispatching both endpoints must never beat
+  // dispatching the better single endpoint (only active when the thermal limit constraint is selected).
+  const edgeTerms = constraints.includes('thermal_limits')
+    ? applyFeederPenaltyFloor(linearTerms, rawEdgeTerms)
+    : rawEdgeTerms.map(({ i, j, qij }) => ({ i, j, qij }));
 
   const problem = buildFullQuboProblem(n, linearTerms, edgeTerms);
 
@@ -814,11 +821,16 @@ export function runAllSolversSuite(params: {
       out.circuitDepth <= hardware.maxDepthBudget * 1.45 ||
       hardware.couplingTopology === 'all_to_all';
 
+    const bestSampledEnergy = out.sampleSummary?.bestMeasuredEnergy ?? out.achievedEnergy;
     return {
       algorithm: out.algorithm,
       category: meta.category,
       familyTag: out.algorithm === 'QAOA' ? `X-Mixer Ansatz (p=${p})` : meta.familyTag,
       approxRatio: roundTo(out.approxRatio, 4),
+      bestSampledRatio: roundTo(computeApproxRatio(bestSampledEnergy, eMinRef, eMaxRef), 4),
+      ...(out.sampleSummary
+        ? { groundStateProbability: roundTo(out.sampleSummary.groundStateProbability, 4) }
+        : {}),
       achievedEnergy: roundTo(out.achievedEnergy, 2),
       expectationEnergy: roundTo(out.expectationEnergy, 2),
       executionMode: out.executionMode,

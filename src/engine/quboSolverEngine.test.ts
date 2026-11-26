@@ -203,3 +203,43 @@ test('large 24-node microgrid runs real partitioned statevector decomposition an
   assert.equal(qaoa.executionMode, 'partitioned_statevector');
   assert.ok(qaoa.approxRatio >= 0 && qaoa.approxRatio <= 1);
 });
+
+test('thermal penalty floor: near-limit feeders never make co-dispatching both endpoints cheaper than the best single endpoint', () => {
+  const topo = generateMicrogridTopology(10, 0.5, NOMINAL_CLIMATE_CONDITIONS);
+  const congested = {
+    ...topo,
+    edges: topo.edges.map((e) => ({ ...e, flowMW: e.limitMW * 0.97 })),
+  };
+  const { problem } = buildFullMicrogridQuboProblem(congested, NOMINAL_CLIMATE_CONDITIONS, ['thermal_limits']);
+  assert.ok(problem.edges.length > 0);
+  for (const e of problem.edges) {
+    const both = problem.linear[e.i] + problem.linear[e.j] + e.qij;
+    const bestSingle = Math.min(problem.linear[e.i], problem.linear[e.j]);
+    assert.ok(
+      both >= bestSingle - 1e-9,
+      `Feeder (${e.i},${e.j}) co-dispatch energy ${both} beats best single endpoint ${bestSingle}`
+    );
+  }
+});
+
+test('runAllSolversSuite reports measurement-derived bestSampledRatio and groundStateProbability for quantum solvers', () => {
+  const topo = generateMicrogridTopology(8, 0.45, NOMINAL_CLIMATE_CONDITIONS);
+  const suite = runAllSolversSuite({
+    topology: topo,
+    climate: NOMINAL_CLIMATE_CONDITIONS,
+    constraints: ['thermal_limits', 'voltage_stability'],
+    hardware: IBM_HARDWARE_PROFILES['aer_simulator (statevector)'],
+    layersP: 2,
+    optimizer: 'COBYLA',
+    shots: 2048,
+    selectedAlgorithm: 'QAOA',
+  });
+  for (const b of suite.benchmarks) {
+    assert.ok(b.bestSampledRatio !== undefined && b.bestSampledRatio >= 0 && b.bestSampledRatio <= 1, `${b.algorithm} bestSampledRatio`);
+  }
+  const qaoa = suite.benchmarks.find((b) => b.algorithm === 'QAOA')!;
+  assert.ok(qaoa.groundStateProbability !== undefined);
+  assert.ok(qaoa.groundStateProbability! >= 0 && qaoa.groundStateProbability! <= 1);
+  const greedy = suite.benchmarks.find((b) => b.algorithm === 'Greedy Dispatch')!;
+  assert.equal(greedy.groundStateProbability, undefined, 'Classical solvers have no measurement distribution');
+});

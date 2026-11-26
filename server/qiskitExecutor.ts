@@ -19,7 +19,9 @@ import {
   evaluateMicrogridDispatchFromBits,
 } from '../src/engine/quboSolverEngine';
 import {
+  completeBitsGreedy,
   computeExactSpectrum,
+  estimateEnergyBounds,
   evaluateQuboBits,
   quboToIsing,
   type FullQuboProblem,
@@ -582,6 +584,9 @@ export function scoreMeasuredCountsAgainstMicrogrid(params: {
   achievedQuboEnergy: number;
   expectationQuboEnergy: number;
   approxRatio: number;
+  bestSampledRatio: number;
+  groundStateProbability: number;
+  truncated: boolean;
   demandMetPct: number;
   renewableUtilPct: number;
   lossMW: number;
@@ -608,9 +613,15 @@ export function scoreMeasuredCountsAgainstMicrogrid(params: {
       ? binaryStr.slice(-nQubits).split('').reverse().join('')
       : binaryStr.slice(0, nQubits);
 
+    // Measured qubits decide nodes [0, nQubits); any remaining nodes are completed greedily
+    // (never tiled copies of measured bits) so energy and dispatch KPIs cover the full grid.
     const bitsArr = new Uint8Array(problem.n);
-    for (let i = 0; i < problem.n; i++) {
-      bitsArr[i] = q0Bits[i % q0Bits.length] === '1' ? 1 : 0;
+    const measuredCount = Math.min(problem.n, q0Bits.length);
+    for (let i = 0; i < measuredCount; i++) {
+      bitsArr[i] = q0Bits[i] === '1' ? 1 : 0;
+    }
+    if (measuredCount < problem.n) {
+      completeBitsGreedy(problem, bitsArr, measuredCount);
     }
 
     const energy = evaluateQuboBits(problem, bitsArr);
@@ -621,15 +632,26 @@ export function scoreMeasuredCountsAgainstMicrogrid(params: {
   scored.sort((a, b) => a.energy - b.energy);
   const best = scored[0];
 
-  let approxRatio = 0.85;
+  // Reference energy bounds measured on the exact same QUBO: exact 2^n spectrum for n <= 12,
+  // otherwise best-known (greedy / SA / all-on) vs worst-sampled dispatch energies.
+  let eMinRef: number;
+  let eMaxRef: number;
   if (problem.n <= 12) {
     const spec = computeExactSpectrum(problem);
-    const span = Math.max(1e-6, spec.eMax - spec.eMin);
-    approxRatio = Math.max(0, Math.min(1, (spec.eMax - best.energy) / span));
+    eMinRef = spec.eMin;
+    eMaxRef = spec.eMax;
   } else {
-    const zeroEnergy = 0;
-    approxRatio = best.energy < zeroEnergy ? Math.min(0.99, Math.max(0.5, 0.8 + Math.min(0.18, Math.abs(best.energy) / (problem.n * 15)))) : 0.5;
+    const bounds = estimateEnergyBounds(problem, problem.n * 131 + 7);
+    eMinRef = Math.min(bounds.eMin, best.energy);
+    eMaxRef = Math.max(bounds.eMax, ...scored.map((s) => s.energy));
   }
+  const refSpan = Math.max(1e-6, eMaxRef - eMinRef);
+  const approxRatio = Math.max(0, Math.min(1, (eMaxRef - best.energy) / refSpan));
+  const groundStateShots = scored
+    .filter((s) => s.energy <= eMinRef + 1e-6)
+    .reduce((sum, s) => sum + s.count, 0);
+  const groundStateProbability = groundStateShots / totalShots;
+  const truncated = problem.n > nQubits;
 
   const byFreq = [...scored].sort((a, b) => b.count - a.count).slice(0, 8);
   const topBitstrings: BitstringCount[] = byFreq.map((item) => ({
@@ -647,6 +669,9 @@ export function scoreMeasuredCountsAgainstMicrogrid(params: {
     achievedQuboEnergy: roundTo(best.energy, 4),
     expectationQuboEnergy: roundTo(expEnergy, 4),
     approxRatio: roundTo(approxRatio, 4),
+    bestSampledRatio: roundTo(approxRatio, 4),
+    groundStateProbability: roundTo(groundStateProbability, 4),
+    truncated,
     demandMetPct: dispatchMetrics.demandMetPct,
     renewableUtilPct: dispatchMetrics.renewableUtilPct,
     lossMW: dispatchMetrics.lossMW,
@@ -1377,6 +1402,7 @@ export async function executeRealQiskitJob(params: {
       layersP,
       shots,
       compiled,
+      requestedBackend: backend,
     });
   }
 
@@ -1392,6 +1418,7 @@ export async function executeRealQiskitJob(params: {
       layersP,
       shots,
       compiled,
+      requestedBackend: backend,
     });
   }
 
@@ -1410,6 +1437,7 @@ function hydratePythonQiskitResult(
     layersP: number;
     shots: number;
     compiled: { openQasm3: string; twoQubitGateCount: number; estimatedDepth: number };
+    requestedBackend: string;
   }
 ): QiskitJobExecutionResult {
   const optimalBitsRaw = typeof pyRes.optimalBitstring === 'string' ? pyRes.optimalBitstring : undefined;
@@ -1424,25 +1452,58 @@ function hydratePythonQiskitResult(
     | undefined;
   let approxRatio: number | undefined;
 
+  let truncated = false;
+  let groundStateProbability: number | undefined;
+  let fullGridEnergy: number | undefined;
   if (optimalBitsRaw) {
     const cleanBits = optimalBitsRaw.replace(/[^01]/g, '');
+    // Measured qubits decide nodes [0, len); remaining nodes are completed greedily (no tiling).
     const bitsArr = new Uint8Array(ctx.problem.n);
-    for (let i = 0; i < ctx.problem.n; i++) {
-      bitsArr[i] = cleanBits[i % Math.max(1, cleanBits.length)] === '1' ? 1 : 0;
+    const measuredCount = Math.min(ctx.problem.n, cleanBits.length);
+    for (let i = 0; i < measuredCount; i++) {
+      bitsArr[i] = cleanBits[i] === '1' ? 1 : 0;
+    }
+    if (measuredCount < ctx.problem.n) {
+      completeBitsGreedy(ctx.problem, bitsArr, measuredCount);
+      truncated = true;
     }
     dispatchMetrics = evaluateMicrogridDispatchFromBits(ctx.topology, bitsArr, ctx.climate);
-    const achieved =
-      typeof pyRes.achievedQuboEnergy === 'number'
-        ? pyRes.achievedQuboEnergy
-        : evaluateQuboBits(ctx.problem, bitsArr);
+    const achieved = evaluateQuboBits(ctx.problem, bitsArr);
+    fullGridEnergy = achieved;
+
+    let eMinRef: number;
+    let eMaxRef: number;
     if (ctx.problem.n <= 12) {
       const spec = computeExactSpectrum(ctx.problem);
-      approxRatio = roundTo(
-        Math.max(0, Math.min(1, (spec.eMax - achieved) / Math.max(1e-6, spec.eMax - spec.eMin))),
-        4
-      );
+      eMinRef = spec.eMin;
+      eMaxRef = spec.eMax;
+    } else {
+      const bounds = estimateEnergyBounds(ctx.problem, ctx.problem.n * 131 + 7);
+      eMinRef = Math.min(bounds.eMin, achieved);
+      eMaxRef = Math.max(bounds.eMax, achieved);
+    }
+    approxRatio = roundTo(
+      Math.max(0, Math.min(1, (eMaxRef - achieved) / Math.max(1e-6, eMaxRef - eMinRef))),
+      4
+    );
+    if (Array.isArray(pyRes.topBitstrings)) {
+      const prob = (pyRes.topBitstrings as BitstringCount[])
+        .filter((b) => b.isOptimal)
+        .reduce((s, b) => s + Number(b.probability ?? 0), 0);
+      groundStateProbability = roundTo(prob, 4);
     }
   }
+
+  // Transparent fallback reporting: an IBM QPU was requested but the job executed on Aer.
+  const reportedBackend = String(pyRes.backendName ?? 'qiskit_aer.AerSimulator');
+  const ranOnAer = reportedBackend.toLowerCase().includes('aer');
+  const wantedQpu = !ctx.requestedBackend.startsWith('aer_simulator');
+  const fallbackToSimulator = wantedQpu && ranOnAer;
+  const fallbackReason = fallbackToSimulator
+    ? typeof pyRes.fallbackReason === 'string'
+      ? pyRes.fallbackReason
+      : `Requested IBM backend "${ctx.requestedBackend}" but the job ran on qiskit_aer.AerSimulator (IBM credentials or runtime unavailable).`
+    : undefined;
 
   const rawStatus = String(pyRes.status ?? 'COMPLETED').toUpperCase();
   const status: QiskitJobExecutionResult['status'] =
@@ -1459,7 +1520,13 @@ function hydratePythonQiskitResult(
   return {
     executionEngine: engine,
     jobId: String(pyRes.jobId ?? `qiskit-${Date.now()}`),
-    backendName: String(pyRes.backendName ?? 'qiskit_aer.AerSimulator'),
+    backendName: reportedBackend,
+    requestedBackend: ctx.requestedBackend,
+    ...(fallbackToSimulator ? { fallbackToSimulator: true, fallbackReason } : {}),
+    ...(typeof pyRes.optimizerUsed === 'string' ? { optimizerUsed: pyRes.optimizerUsed } : {}),
+    ...(truncated ? { truncated: true } : {}),
+    ...(groundStateProbability !== undefined ? { groundStateProbability } : {}),
+    ...(approxRatio !== undefined ? { bestSampledRatio: approxRatio } : {}),
     status,
     submittedAtUtc: new Date().toISOString(),
     algorithm: ctx.algorithm,
@@ -1470,7 +1537,7 @@ function hydratePythonQiskitResult(
     twoQubitGateCount: Number(pyRes.twoQubitGateCount ?? ctx.compiled.twoQubitGateCount),
     openQasm3: typeof pyRes.openQasm3 === 'string' ? pyRes.openQasm3 : ctx.compiled.openQasm3,
     ...(optimalBitsRaw ? { optimalBitstring: `|${optimalBitsRaw.replace(/[^01]/g, '')}⟩` } : {}),
-    ...(typeof pyRes.achievedQuboEnergy === 'number' ? { achievedQuboEnergy: pyRes.achievedQuboEnergy } : {}),
+    ...(fullGridEnergy !== undefined ? { achievedQuboEnergy: roundTo(fullGridEnergy, 4) } : {}),
     ...(typeof pyRes.expectationQuboEnergy === 'number'
       ? { expectationQuboEnergy: pyRes.expectationQuboEnergy }
       : {}),

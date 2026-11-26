@@ -158,9 +158,15 @@ def execute_qiskit_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     backend_id = str(payload.get("backend", "aer_simulator (statevector)"))
     backend_name = backend_id.split(" ")[0].strip()
 
-    use_ibm_cloud = not backend_name.startswith("aer_simulator") and bool(
-        os.environ.get("IBM_QUANTUM_TOKEN", "").strip()
-    )
+    wants_ibm = not backend_name.startswith("aer_simulator")
+    has_token = bool(os.environ.get("IBM_QUANTUM_TOKEN", "").strip())
+    use_ibm_cloud = wants_ibm and has_token
+    fallback_reason = None
+    if wants_ibm and not has_token:
+        fallback_reason = (
+            f"IBM backend '{backend_name}' requested but IBM_QUANTUM_TOKEN is not set; "
+            "executed on qiskit_aer.AerSimulator instead."
+        )
 
     # Parameter vector initialization
     if algorithm == "VQA":
@@ -220,7 +226,15 @@ def execute_qiskit_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         return objective, exp_energy, best_bits, top_bitstrings
 
     opt_shots = min(shots, 1024)
-    scipy_method = "Powell" if optimizer == "Powell" else "Nelder-Mead" if optimizer == "NELDER_MEAD" else "COBYLA"
+    # scipy has no native SPSA: report the substitution explicitly instead of hiding it.
+    if optimizer == "Powell":
+        scipy_method, optimizer_used = "Powell", "Powell"
+    elif optimizer == "NELDER_MEAD":
+        scipy_method, optimizer_used = "Nelder-Mead", "NELDER_MEAD"
+    elif optimizer == "SPSA":
+        scipy_method, optimizer_used = "COBYLA", "COBYLA (SPSA requested; not available in scipy)"
+    else:
+        scipy_method, optimizer_used = "COBYLA", "COBYLA"
 
     def cost_fn(theta: np.ndarray) -> float:
         qc = build_ansatz_circuit(
@@ -272,6 +286,7 @@ def execute_qiskit_job(payload: Dict[str, Any]) -> Dict[str, Any]:
             "twoQubitGateCount": int(two_q_gates),
             "openQasm3": openqasm3_str,
             "optimalAngles": optimal_angles,
+            "optimizerUsed": optimizer_used,
             "runtimeMs": round((time.perf_counter() - t0) * 1000, 1),
         }
 
@@ -299,6 +314,8 @@ def execute_qiskit_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         "expectationQuboEnergy": round(exp_energy, 4),
         "topBitstrings": top_bitstrings,
         "optimalAngles": optimal_angles,
+        "optimizerUsed": optimizer_used,
+        **({"fallbackReason": fallback_reason} if fallback_reason else {}),
         "runtimeMs": round((time.perf_counter() - t0) * 1000, 1),
     }
 

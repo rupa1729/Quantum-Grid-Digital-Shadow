@@ -515,6 +515,10 @@ export interface SolverBenchmarkEntry {
   category: 'quantum' | 'ising' | 'classical';
   familyTag: string;
   approxRatio: number;
+  /** Best-found-energy ratio on the same basis for quantum (best sampled shot) and classical solvers. */
+  bestSampledRatio?: number;
+  /** Fraction of measured shots on a ground-state bitstring (exact-statevector quantum solvers only). */
+  groundStateProbability?: number;
   achievedEnergy?: number;
   expectationEnergy?: number;
   executionMode?:
@@ -624,6 +628,19 @@ export interface QiskitJobExecutionResult {
   executionEngine: 'ibm_cloud_rest' | 'qiskit_python_service' | 'qiskit_local_python';
   jobId: string;
   backendName: string;
+  /** Backend the caller asked for (before any fallback). */
+  requestedBackend?: string;
+  /** True when the job ran on Aer although an IBM QPU was requested. */
+  fallbackToSimulator?: boolean;
+  fallbackReason?: string;
+  /** Optimizer actually used by the Python runner (e.g. SPSA maps to COBYLA). */
+  optimizerUsed?: string;
+  /** True when fewer qubits than nodes were executed and the remaining nodes were greedily completed. */
+  truncated?: boolean;
+  /** Fraction of shots on the lowest-energy measured bitstring (or on the exact ground state when n <= 12). */
+  groundStateProbability?: number;
+  /** Ratio of the best measured shot (same basis as classical best-found energy). */
+  bestSampledRatio?: number;
   status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   submittedAtUtc: string;
   algorithm: QuantumAlgorithm;
