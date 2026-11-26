@@ -698,7 +698,7 @@ async function startServer() {
 
   const PORT = 3000;
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`QGrid Studio full-stack server running on http://0.0.0.0:${PORT}`);
+    console.log(`Digital Q-Grid Twin full-stack server running on http://0.0.0.0:${PORT}`);
   });
 }
 

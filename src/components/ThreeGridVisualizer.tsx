@@ -506,6 +506,8 @@ export function ThreeGridVisualizer({
   heightClass = 'h-[440px]',
 }: ThreeGridVisualizerProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  // One renderer/canvas for the component's lifetime so a theme change never produces a blank frame.
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const floatingPadRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
@@ -593,10 +595,13 @@ export function ThreeGridVisualizer({
       camera.position.set(0, 21.5, 25.5);
     }
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: !isSoftwareGl,
-      powerPreference: 'high-performance',
-    });
+    const renderer =
+      rendererRef.current ??
+      new THREE.WebGLRenderer({
+        antialias: !isSoftwareGl,
+        powerPreference: 'high-performance',
+      });
+    rendererRef.current = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = isDark ? 1.12 : 1.05;
@@ -604,8 +609,10 @@ export function ThreeGridVisualizer({
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
+    if (renderer.domElement.parentElement !== container) {
+      container.innerHTML = '';
+      container.appendChild(renderer.domElement);
+    }
 
     // Studio Environment Reflection (mandatory RoomEnvironment)
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -1190,9 +1197,17 @@ export function ThreeGridVisualizer({
       disposables.geometries.forEach((g) => g.dispose());
       disposables.materials.forEach((m) => m.dispose());
       disposables.textures.forEach((t) => t.dispose());
-      renderer.dispose();
     };
   }, [topology, pathMode, isDark, nodeSizeMode, selectedNodeId]);
+
+  // Dispose the shared renderer only when the component unmounts.
+  useEffect(
+    () => () => {
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
+    },
+    []
+  );
 
   const utilPct = activeNodeForCard
     ? Math.round((activeNodeForCard.loadMW / Math.max(1, activeNodeForCard.capacityMW)) * 100)
@@ -1207,7 +1222,7 @@ export function ThreeGridVisualizer({
       {padMode === 'docked' && activeNodeForCard && (
         <div
           data-testid="three-node-telemetry-card"
-          className="border-b border-slate-200 dark:border-[#393939] bg-white dark:bg-[#1E1E1E] px-3.5 py-2 transition-colors duration-150"
+          className="border-b border-slate-200 dark:border-[#393939] bg-white dark:bg-[#1E1E1E] px-3.5 py-2"
         >
           {/* Row 1: Fixed-height header row (bus identity + status + pad controls) */}
           <div className="flex items-center justify-between gap-3 min-h-[26px]">

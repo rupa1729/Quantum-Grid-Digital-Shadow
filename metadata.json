@@ -1,5 +1,5 @@
 {
-  "name": "QGrid Studio — IBM Qiskit Grid Optimization Simulator",
+  "name": "Digital Q-Grid Twin — IBM Qiskit Grid Optimization Simulator",
   "description": "Interactive quantum vs classical power grid optimization simulator and monitoring dashboard for IBM Quantum Qiskit Fall Fest, featuring D3.js animated grid topologies, node diagnostics, quantum kernel QA benchmarks, dataset upload lab, and constraint-based impact analytics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

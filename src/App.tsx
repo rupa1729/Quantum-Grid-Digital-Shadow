@@ -1,4 +1,6 @@
+import { PulsingDot } from './components/PulsingDot';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Menu, Moon, Sun, Zap } from 'lucide-react';
 import type {
   BackendRuntimeStatus,
@@ -70,6 +72,13 @@ const INITIAL_LIVE_SNAPSHOT = buildTopologyFromLiveSlot(
   INITIAL_LIVE_PAYLOAD.currentSlotIndex
 );
 
+/** Synchronously mirrors the theme onto <html> so class and color-scheme never disagree with React state. */
+function applyThemeToDocument(dark: boolean): void {
+  const root = document.documentElement;
+  root.classList.toggle('dark', dark);
+  root.style.colorScheme = dark ? 'dark' : 'light';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -85,7 +94,7 @@ export default function App() {
   const pendingThemeRef = useRef<boolean | null>(null);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
+    applyThemeToDocument(isDark);
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
     } catch {
@@ -265,8 +274,17 @@ export default function App() {
 
   const handleCommitThemeTurn = useCallback(() => {
     if (pendingThemeRef.current !== null) {
-      setIsDark(pendingThemeRef.current);
+      const next = pendingThemeRef.current;
       pendingThemeRef.current = null;
+      const root = document.documentElement;
+      // Freeze every CSS transition so no panel lags behind <html>/<body> mid-switch.
+      root.classList.add('theme-switching');
+      applyThemeToDocument(next);
+      // Commit React state in the same frame, while the overlay still fully covers the page.
+      flushSync(() => setIsDark(next));
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => root.classList.remove('theme-switching'))
+      );
     }
   }, []);
 
@@ -621,7 +639,7 @@ export default function App() {
         };
 
   return (
-    <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-[#161616] text-slate-900 dark:text-[#F4F4F4] transition-colors">
+    <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-[#161616] text-slate-900 dark:text-[#F4F4F4]">
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -651,21 +669,25 @@ export default function App() {
               <div className="text-[11px] font-medium text-slate-500 dark:text-[#A8A8A8] truncate">
                 {pageMeta.breadcrumb}
               </div>
-              <h1 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-[#F4F4F4] leading-tight truncate">
+              <h1 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-[#F4F4F4] leading-tight truncate" title={pageMeta.title}>
                 {pageMeta.title}
               </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div
               data-testid="header-engine-status"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap"
+              className="hidden md:inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#262626] px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap"
             >
-              <span className={`h-2 w-2 rounded-full ${headerStatusMeta.dotClass}`} aria-hidden="true" />
+              {backendStatus.mode === 'ibm_quantum_live' ? (
+                <PulsingDot variant="green" />
+              ) : (
+                <span className={`h-2 w-2 rounded-full ${headerStatusMeta.dotClass}`} aria-hidden="true" />
+              )}
               <span className={headerStatusMeta.textClass}>{headerStatusMeta.label}</span>
             </div>
-            <div className="hidden xl:flex items-center gap-2 text-xs text-slate-500 dark:text-[#A8A8A8] whitespace-nowrap">
+            <div className="hidden min-[1700px]:flex items-center gap-2 text-xs text-slate-500 dark:text-[#A8A8A8] whitespace-nowrap">
               <span>{topology.name}</span>
               <span aria-hidden="true">·</span>
               <span className="font-mono text-slate-700 dark:text-[#E0E0E0]">{activeBackend}</span>

@@ -1,5 +1,4 @@
 import {
-  Activity,
   Cpu,
   FlaskConical,
   LayoutDashboard,
@@ -11,6 +10,8 @@ import {
 } from 'lucide-react';
 import type { BackendRuntimeStatus, GridSummary, NavTab, QiskitBackend } from '../types/grid';
 import { QISKIT_BACKENDS } from '../constants';
+import { BrandLogo } from './BrandLogo';
+import { PulsingDot } from './PulsingDot';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -102,11 +103,11 @@ export function Sidebar({
     <div className="flex h-full flex-col bg-white dark:bg-[#161616] border-r border-slate-200 dark:border-[#393939]">
       <div className="flex items-center justify-between px-5 h-16 border-b border-slate-200 dark:border-[#393939] shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0F62FE] text-white shrink-0">
-            <Activity className="h-4 w-4" aria-hidden="true" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] shrink-0">
+            <BrandLogo className="h-7 w-7" />
           </div>
-          <span className="text-base font-bold tracking-tight text-slate-900 dark:text-[#F4F4F4] whitespace-nowrap">
-            QGrid Studio
+          <span className="text-[15px] font-bold tracking-tight text-slate-900 dark:text-[#F4F4F4] whitespace-nowrap">
+            Digital Q-Grid Twin
           </span>
         </div>
         <button
@@ -167,7 +168,7 @@ export function Sidebar({
             id="sidebar-backend-select"
             value={activeBackend}
             onChange={(e) => onBackendChange(e.target.value as QiskitBackend)}
-            className="w-full rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#262626] px-2.5 py-2 text-xs font-mono text-slate-800 dark:text-[#F4F4F4] focus:border-[#0F62FE] focus:outline-none"
+            className="w-full rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#262626] pl-2 pr-1 py-2 text-[11px] font-mono text-slate-800 dark:text-[#F4F4F4] focus:border-[#0F62FE] focus:outline-none"
           >
             {QISKIT_BACKENDS.map((b) => (
               <option key={b} value={b}>
@@ -213,7 +214,11 @@ export function Sidebar({
               data-testid="sidebar-engine-status"
               className={`inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${statusMeta.colorClass}`}
             >
-              <span aria-hidden="true">{statusMeta.glyph}</span>
+              {backendStatus.mode === 'ibm_quantum_live' ? (
+                <PulsingDot variant="green" />
+              ) : (
+                <span aria-hidden="true">{statusMeta.glyph}</span>
+              )}
               {statusMeta.label}
             </span>
           </div>

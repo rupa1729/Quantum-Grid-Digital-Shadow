@@ -64,23 +64,23 @@ export const SYNTHETIC_GRID_REGIONS: readonly string[] = [
 
 export const PAGE_TITLES: Record<NavTab, { breadcrumb: string; title: string }> = {
   overview: {
-    breadcrumb: 'QGrid Studio / Overview',
+    breadcrumb: 'Digital Q-Grid Twin / Overview',
     title: 'Grid Optimization & Live Telemetry',
   },
   diagnostics: {
-    breadcrumb: 'QGrid Studio / Diagnostics',
+    breadcrumb: 'Digital Q-Grid Twin / Diagnostics',
     title: 'Individual Node Diagnostics',
   },
   kernels: {
-    breadcrumb: 'QGrid Studio / Quantum Kernels & QA',
+    breadcrumb: 'Digital Q-Grid Twin / Quantum Kernels & QA',
     title: 'Quantum Circuits, QA Validation & Model Benchmarks',
   },
   explore: {
-    breadcrumb: 'QGrid Studio / Explore Lab',
+    breadcrumb: 'Digital Q-Grid Twin / Explore Lab',
     title: 'Dataset Upload & IBM Qiskit Comparison Lab',
   },
   impact: {
-    breadcrumb: 'QGrid Studio / Impact',
+    breadcrumb: 'Digital Q-Grid Twin / Impact',
     title: 'Business Value & Constraint Impact',
   },
 };
