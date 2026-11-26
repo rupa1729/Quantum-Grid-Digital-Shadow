@@ -1,4 +1,6 @@
+import { AlertTriangle } from 'lucide-react';
 import type { HealthStatus } from '../types/grid';
+import { PulsingDot } from './PulsingDot';
 
 interface StatusIndicatorProps {
   status: HealthStatus | 'pass' | 'fail' | 'resolved';
@@ -51,6 +53,17 @@ const CONFIG = {
   },
 } as const;
 
+function StatusMark({ status, glyph }: { status: StatusIndicatorProps['status']; glyph: string }) {
+  if (status === 'healthy') return <PulsingDot variant="green" />;
+  if (status === 'alarming') return <PulsingDot variant="red" />;
+  if (status === 'warning') return <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />;
+  return (
+    <span aria-hidden="true" className="text-[9px] leading-none">
+      {glyph}
+    </span>
+  );
+}
+
 export function StatusIndicator({ status, compact = false, badgeStyle = false }: StatusIndicatorProps) {
   const cfg = CONFIG[status];
   if (badgeStyle) {
@@ -58,9 +71,7 @@ export function StatusIndicator({ status, compact = false, badgeStyle = false }:
       <span
         className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap ${cfg.badgeClass}`}
       >
-        <span aria-hidden="true" className="text-[9px] leading-none">
-          {cfg.glyph}
-        </span>
+        <StatusMark status={status} glyph={cfg.glyph} />
         <span>{cfg.label}</span>
       </span>
     );
@@ -72,9 +83,7 @@ export function StatusIndicator({ status, compact = false, badgeStyle = false }:
         compact ? 'text-xs' : 'text-[13px]'
       } ${cfg.textClass}`}
     >
-      <span aria-hidden="true" className="text-[9px] leading-none">
-        {cfg.glyph}
-      </span>
+      <StatusMark status={status} glyph={cfg.glyph} />
       <span>{cfg.label}</span>
     </span>
   );

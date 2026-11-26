@@ -176,6 +176,7 @@ export function ThemePageTurnOverlay({
       const unfoldDurationMs = 560;
       const fadeDurationMs = 150;
       const startTime = performance.now();
+      let fadeStart: number | null = null;
       setGeometry(buildTurnGeometry(0, 1));
 
       const step = (now: number) => {
@@ -190,11 +191,17 @@ export function ThemePageTurnOverlay({
         }
 
         if (!committed) {
+          // Commit under full coverage, then start the fade on the NEXT frame so a heavy
+          // synchronous re-render (WebGL scene rebuild) cannot eat the fade or reveal a half-themed page.
           committed = true;
+          setGeometry(buildTurnGeometry(2, 1));
           commitRef.current();
+          rafId = window.requestAnimationFrame(step);
+          return;
         }
 
-        const fadeProgress = Math.min(1, (elapsed - unfoldDurationMs) / fadeDurationMs);
+        if (fadeStart === null) fadeStart = now;
+        const fadeProgress = Math.min(1, (now - fadeStart) / fadeDurationMs);
         setGeometry(buildTurnGeometry(2, Math.max(0, 1 - fadeProgress)));
 
         if (fadeProgress < 1) {

@@ -14,6 +14,8 @@ import type {
   QiskitRuntimeCapabilities,
   QuboSuiteResult,
   QuantumAlgorithm,
+  QuantumCircuitResult,
+  QuantumOptimizationReport,
 } from '../types/grid';
 import { OFFLINE_BACKEND_STATUS } from '../constants';
 import {
@@ -56,10 +58,18 @@ export async function executeGridOptimizationJob(params: {
   topology: GridTopology;
   backend: QiskitBackend;
   seed: number;
+  climate?: ClimateConditions;
+  algorithm?: QuantumAlgorithm;
+  layersP?: number;
+  shots?: number;
+  optimizer?: ClassicalOptimizer;
+  constraints?: ConstraintId[];
 }): Promise<{
   topology: GridTopology;
   lossReductionPct: number;
   resolvedAlerts: GridAlert[];
+  report: QuantumOptimizationReport;
+  circuitResult: QuantumCircuitResult;
   status: BackendRuntimeStatus;
   source: 'live_backend' | 'offline_local';
 }> {
@@ -74,11 +84,22 @@ export async function executeGridOptimizationJob(params: {
       topology: GridTopology;
       lossReductionPct: number;
       resolvedAlerts: GridAlert[];
+      report: QuantumOptimizationReport;
+      circuitResult: QuantumCircuitResult;
       status: BackendRuntimeStatus;
     };
     return { ...data, source: 'live_backend' };
   } catch {
-    const local = runQuantumGridOptimization(params.topology, params.seed);
+    const local = runQuantumGridOptimization(params.topology, params.seed, {
+      climate: params.climate,
+      backend: params.backend,
+      algorithm: params.algorithm,
+      layersP: params.layersP,
+      shots: params.shots,
+      optimizer: params.optimizer,
+      constraints: params.constraints,
+      executionLocation: 'browser_local',
+    });
     return {
       ...local,
       status: OFFLINE_BACKEND_STATUS,

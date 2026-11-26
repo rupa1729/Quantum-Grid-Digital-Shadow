@@ -8,6 +8,7 @@ import {
   computeGridSummary,
   computeImpactSummary,
   computeNodeStatus,
+  deriveGridAlertsFromTopology,
   generateScalableGridTopology,
   injectGridFault,
   parseUploadedDataset,
@@ -200,4 +201,114 @@ test('computeBusinessImpactMetrics produces positive utility ROI, cost waterfall
   assert.equal(biz.busComparison.length, INITIAL_GRID_TOPOLOGY.nodes.length);
   assert.ok(biz.afterHealth.alarming <= biz.beforeHealth.alarming);
 });
+
+test('runQuantumGridOptimization executes real statevector simulator with full transparent audit report', () => {
+  const exactGrid = generateScalableGridTopology(8, CLIMATE_PRESETS[0].conditions);
+  const exactRun = runQuantumGridOptimization(exactGrid, 321, {
+    algorithm: 'QAOA',
+    layersP: 3,
+    shots: 4096,
+    backend: 'aer_simulator (statevector)',
+    climate: CLIMATE_PRESETS[0].conditions,
+    optimizer: 'COBYLA',
+    executionLocation: 'server_api',
+  });
+
+  const n = exactGrid.nodes.length;
+  assert.ok(n <= 12, 'Exact statevector test topology must have <= 12 buses');
+  const r = exactRun.report;
+  assert.equal(r.executionEngine, 'exact_statevector_simulator');
+  assert.equal(r.executionLocation, 'server_api');
+  assert.equal(r.quboSummary.exactGroundStateKnown, true);
+  assert.equal(r.qubits, n);
+  assert.equal(r.nodeDecisions.length, n);
+  assert.equal(r.quantumResult.optimalBitstring.length, n + 2);
+  assert.equal(r.classicalBaseline.optimalBitstring.length, n + 2);
+  assert.ok(r.quantumResult.topBitstrings.length > 0);
+  assert.ok(r.quantumResult.optimalAngles.length === 6, 'p=3 QAOA must emit 2p=6 angles');
+  assert.ok(r.openQasm3.includes('OPENQASM 3.0;'));
+  assert.ok(r.qiskitCode.includes(`QuantumCircuit(${n}, ${n})`));
+  assert.ok(r.quantumResult.achievedQuboEnergy >= r.quboSummary.exactGroundEnergy - 1e-6);
+  assert.ok(r.classicalBaseline.achievedQuboEnergy >= r.quboSummary.exactGroundEnergy - 1e-6);
+  assert.ok(r.annealingBaseline.achievedQuboEnergy >= r.quboSummary.exactGroundEnergy - 1e-6);
+  assert.equal(
+    `|${r.nodeDecisions.map((d) => d.quantumBit).join('')}⟩`,
+    r.quantumResult.optimalBitstring,
+    'Bus-by-bus qubit decisions must match the measured quantum bitstring'
+  );
+  assert.equal(
+    `|${r.nodeDecisions.map((d) => d.classicalBit).join('')}⟩`,
+    r.classicalBaseline.optimalBitstring,
+    'Bus-by-bus classical decisions must match the classical bitstring'
+  );
+  assert.deepEqual(
+    r.afterSummary,
+    computeGridSummary(exactRun.topology.nodes, exactRun.topology.edges)
+  );
+
+  // Also verify N > 12 runs honest partitioned statevector simulator with real shot samples
+  const partRun = runQuantumGridOptimization(INITIAL_GRID_TOPOLOGY, 321, {
+    algorithm: 'CVaR-QAOA',
+    layersP: 2,
+    shots: 2048,
+    backend: 'aer_simulator (statevector)',
+    optimizer: 'COBYLA',
+  });
+  assert.equal(partRun.report.executionEngine, 'partitioned_statevector_simulator');
+  assert.equal(partRun.report.quboSummary.exactGroundStateKnown, false);
+  assert.equal(partRun.report.nodeDecisions.length, 14);
+  assert.ok(partRun.report.quantumResult.topBitstrings.length > 0);
+  assert.ok(partRun.report.openQasm3.includes('OPENQASM 3.0;'));
+});
+
+test('deriveGridAlertsFromTopology stays strictly synced with active grid state and quantum simulator output', () => {
+  const baselineAlerts = deriveGridAlertsFromTopology(INITIAL_GRID_TOPOLOGY, {
+    contextLabel: 'IEEE 14-Bus Baseline',
+  });
+  const nodeIds = new Set(INITIAL_GRID_TOPOLOGY.nodes.map((n) => n.id));
+  assert.ok(baselineAlerts.length > 0);
+  for (const a of baselineAlerts) {
+    assert.ok(nodeIds.has(a.nodeId), `Alert ${a.id} must reference a real bus in active topology`);
+  }
+
+  // Inject fault -> active alarming/warning alerts increase and match live topology
+  const faulted = injectGridFault(INITIAL_GRID_TOPOLOGY, 77);
+  const faultAlerts = deriveGridAlertsFromTopology(faulted.topology, {
+    contextLabel: 'Fault Injection',
+  });
+  const faultAlarmCount = faultAlerts.filter((a) => a.severity === 'alarming').length;
+  assert.ok(faultAlarmCount >= 1);
+
+  // Run quantum simulator -> stale alarming alerts clear, resolved alerts reflect newly healthy buses
+  const optimized = runQuantumGridOptimization(faulted.topology, 105, {
+    algorithm: 'QAOA',
+    layersP: 2,
+    shots: 2048,
+  });
+  const postAlerts = deriveGridAlertsFromTopology(optimized.topology, {
+    contextLabel: 'QAOA p=2 Simulator',
+    resolvedAlerts: optimized.resolvedAlerts,
+  });
+  assert.equal(
+    postAlerts.filter((a) => a.severity === 'alarming').length,
+    0,
+    'Cleared alarming buses must not linger in real-time alerts after quantum optimization'
+  );
+  assert.ok(
+    postAlerts.some((a) => a.severity === 'resolved'),
+    'Resolved simulator events should appear for newly stabilized buses'
+  );
+
+  // Resolved alerts from a foreign topology must be ignored completely
+  const otherGrid = generateScalableGridTopology(10, CLIMATE_PRESETS[0].conditions);
+  const foreignFiltered = deriveGridAlertsFromTopology(otherGrid, {
+    resolvedAlerts: optimized.resolvedAlerts,
+  });
+  const otherIds = new Set(otherGrid.nodes.map((n) => n.id));
+  for (const a of foreignFiltered) {
+    assert.ok(otherIds.has(a.nodeId), 'Alerts from a previous grid system must never leak across grids');
+  }
+});
+
+
 

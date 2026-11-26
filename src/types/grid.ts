@@ -668,3 +668,121 @@ export interface QiskitJobExecutionResult {
   errorMessage?: string;
 }
 
+export interface NodeQuantumDecision {
+  nodeId: string;
+  nodeName: string;
+  role: NodeRole;
+  qubitIndex: number;
+  quantumBit: 0 | 1;
+  classicalBit: 0 | 1;
+  quboLinearQii: number;
+  isingFieldHi: number;
+  beforeLoadMW: number;
+  afterLoadMW: number;
+  beforeVoltagePU: number;
+  afterVoltagePU: number;
+  beforeTempC: number;
+  afterTempC: number;
+  beforeStatus: HealthStatus;
+  afterStatus: HealthStatus;
+}
+
+export interface QuantumOptimizationOptions {
+  climate?: ClimateConditions;
+  backend?: QiskitBackend;
+  algorithm?: QuantumAlgorithm;
+  layersP?: number;
+  shots?: number;
+  optimizer?: ClassicalOptimizer;
+  constraints?: ConstraintId[];
+}
+
+export interface QuantumOptimizationReport {
+  jobId: string;
+  timestampUtc: string;
+  executionEngine:
+    | 'qiskit_aer_python'
+    | 'exact_statevector_simulator'
+    | 'partitioned_statevector_simulator';
+  executionEngineLabel: string;
+  executionLocation: 'server_api' | 'browser_local';
+  backend: QiskitBackend;
+  backendNoiseEnabled: boolean;
+  noiseProfile: {
+    couplingTopology: CouplingTopology;
+    twoQubitErrorRate: number;
+    readoutErrorRate: number;
+    t2Us: number;
+  };
+  algorithm: QuantumAlgorithm;
+  optimizer: ClassicalOptimizer;
+  qubits: number;
+  stateSpaceDim: number;
+  partitionBlockSize?: number;
+  layersP: number;
+  shots: number;
+  circuitDepth: number;
+  twoQubitGates: number;
+  fidelityPct: number;
+  iterations: number;
+  runtimeMs: number;
+  quboSummary: {
+    linearTerms: number;
+    quadraticTerms: number;
+    isingOffset: number;
+    energyScale: number;
+    exactGroundStateKnown: boolean;
+    exactGroundEnergy: number;
+    worstEnergy: number;
+    exactOptimalBitstring?: string;
+    penalties: {
+      demandBalance: number;
+      thermalOverload: number;
+      renewableCurtailment: number;
+      batterySoc: number;
+    };
+  };
+  quantumResult: {
+    optimalBitstring: string;
+    achievedQuboEnergy: number;
+    expectationQuboEnergy: number;
+    approxRatio: number;
+    accuracyPct: number;
+    optimalAngles: number[];
+    topBitstrings: BitstringCount[];
+    convergenceTrajectory: number[];
+    demandMetPct: number;
+    renewableUtilPct: number;
+    costSavedDailyUsd: number;
+    costSavedPct: number;
+  };
+  classicalBaseline: {
+    algorithm: 'Greedy Dispatch';
+    optimalBitstring: string;
+    achievedQuboEnergy: number;
+    approxRatio: number;
+    accuracyPct: number;
+    lossMW: number;
+    runtimeMs: number;
+    demandMetPct: number;
+    renewableUtilPct: number;
+  };
+  annealingBaseline: {
+    algorithm: 'Simulated Annealing';
+    optimalBitstring: string;
+    achievedQuboEnergy: number;
+    approxRatio: number;
+    accuracyPct: number;
+    lossMW: number;
+    runtimeMs: number;
+  };
+  beforeSummary: GridSummary;
+  afterSummary: GridSummary;
+  lossDeltaMW: number;
+  lossReductionPct: number;
+  nodeDecisions: NodeQuantumDecision[];
+  openQasm3: string;
+  qiskitCode: string;
+}
+
+

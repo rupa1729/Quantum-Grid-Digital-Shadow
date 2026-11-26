@@ -16,6 +16,8 @@ import {
   computeImpactSummary,
   runExploreComparison,
 } from '../engine/quantumGridEngine';
+import { motion, useReducedMotion } from 'motion/react';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 import { D3AccuracyTrendChart } from '../components/D3Charts';
 
 interface ImpactViewProps {
@@ -40,6 +42,8 @@ export function ImpactView({
   const [selectedConstraints, setSelectedConstraints] = useState<ConstraintId[]>([]);
   const [scaleFilter, setScaleFilter] = useState<'all' | 'small' | 'medium' | 'regional'>('all');
   const [maxLatencyMs, setMaxLatencyMs] = useState<number>(600);
+  const [hoverBusId, setHoverBusId] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const impact = useMemo(
     () =>
@@ -185,7 +189,7 @@ export function ImpactView({
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => toggleConstraint(c.id)}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                    className={`rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 hover:-translate-y-0.5 hover:border-[#0F62FE] hover:shadow-[0_0_0_3px_rgba(15,98,254,0.18)] active:translate-y-0 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-[#0F62FE] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
                       isSelected
                         ? 'border-[#0F62FE] bg-[#0F62FE] text-white'
                         : 'border-slate-300 dark:border-[#525252] bg-white dark:bg-[#161616] text-slate-700 dark:text-[#E0E0E0] hover:bg-slate-50 dark:hover:bg-[#353535]'
@@ -264,14 +268,14 @@ export function ImpactView({
         </div>
 
         {/* Executive Headline Value Banner */}
-        <div className="rounded-md border border-[#16A34A]/30 dark:border-[#42BE65]/35 bg-emerald-50/70 dark:bg-[#1E1E1E] p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="card-interactive rounded-md border border-[#16A34A]/30 dark:border-[#42BE65]/35 bg-emerald-50/70 dark:bg-[#1E1E1E] p-4 flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-0.5">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-[#15803D] dark:text-[#42BE65]">
               Projected Annual Utility Value Unlocked
             </div>
             <div className="flex flex-wrap items-baseline gap-2.5">
               <span className="text-3xl font-mono font-bold text-slate-900 dark:text-white tabular-nums">
-                +${businessImpact.totalAnnualValueM.toFixed(2)}M
+                <AnimatedNumber value={businessImpact.totalAnnualValueM} decimals={2} prefix="+$" suffix="M" />
               </span>
               <span className="text-xs font-medium text-slate-600 dark:text-[#C6C6C6]">
                 annual operating savings ·{' '}
@@ -287,14 +291,14 @@ export function ImpactView({
             <div>
               <div className="font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">Avg Accuracy Gain</div>
               <div className="text-lg font-semibold text-[#0F62FE] dark:text-[#78A9FF]">
-                +{impact.kpis.avgAccuracyGain.toFixed(2)}%
+                <AnimatedNumber value={impact.kpis.avgAccuracyGain} decimals={2} prefix="+" suffix="%" />
               </div>
             </div>
             <div className="h-8 w-px bg-slate-200 dark:bg-[#393939] hidden sm:block" aria-hidden="true" />
             <div>
               <div className="font-sans text-[11px] text-slate-500 dark:text-[#A8A8A8]">Congestion Relief</div>
               <div className="text-lg font-semibold text-slate-900 dark:text-[#F4F4F4]">
-                {impact.kpis.avgCongestionRelief.toFixed(1)}%
+                <AnimatedNumber value={impact.kpis.avgCongestionRelief} decimals={1} suffix="%" />
               </div>
             </div>
           </div>
@@ -302,13 +306,13 @@ export function ImpactView({
 
         {/* 4 Unified Financial, Reliability, ESG & Speedup KPI Tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 font-mono tabular-nums">
-          <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
             <div className="flex items-center gap-1.5 font-sans text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
               <TrendingUp className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
               Line-Loss Savings
             </div>
             <div className="mt-1.5 text-2xl font-semibold text-slate-900 dark:text-[#F4F4F4]">
-              ${businessImpact.annualLossSavingsM.toFixed(2)}M
+              <AnimatedNumber value={businessImpact.annualLossSavingsM} decimals={2} prefix="$" suffix="M" />
               <span className="text-xs font-normal text-slate-500 dark:text-[#A8A8A8]">/yr</span>
             </div>
             <div className="mt-1 font-sans text-xs text-[#15803D] dark:text-[#42BE65]">
@@ -316,13 +320,13 @@ export function ImpactView({
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
             <div className="flex items-center gap-1.5 font-sans text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
               <ShieldCheck className="h-3.5 w-3.5 text-[#16A34A] dark:text-[#42BE65]" aria-hidden="true" />
               N-1 Outage Risk Avoided
             </div>
             <div className="mt-1.5 text-2xl font-semibold text-slate-900 dark:text-[#F4F4F4]">
-              ${businessImpact.annualOutageAvoidanceM.toFixed(2)}M
+              <AnimatedNumber value={businessImpact.annualOutageAvoidanceM} decimals={2} prefix="$" suffix="M" />
               <span className="text-xs font-normal text-slate-500 dark:text-[#A8A8A8]">/yr</span>
             </div>
             <div className="mt-1 font-sans text-xs text-slate-500 dark:text-[#A8A8A8]">
@@ -330,13 +334,13 @@ export function ImpactView({
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
             <div className="flex items-center gap-1.5 font-sans text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
               <Leaf className="h-3.5 w-3.5 text-[#16A34A] dark:text-[#42BE65]" aria-hidden="true" />
               CO₂e Emissions Avoided
             </div>
             <div className="mt-1.5 text-2xl font-semibold text-[#15803D] dark:text-[#42BE65]">
-              {businessImpact.annualCo2AvoidedTons.toLocaleString()}{' '}
+              <AnimatedNumber value={businessImpact.annualCo2AvoidedTons} grouping />{' '}
               <span className="text-xs font-normal text-slate-500 dark:text-[#A8A8A8]">t/yr</span>
             </div>
             <div className="mt-1 font-sans text-xs text-slate-500 dark:text-[#A8A8A8]">
@@ -344,13 +348,13 @@ export function ImpactView({
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
+          <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-4">
             <div className="flex items-center gap-1.5 font-sans text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
               <Zap className="h-3.5 w-3.5 text-[#0F62FE] dark:text-[#78A9FF]" aria-hidden="true" />
               Clearing Speedup
             </div>
             <div className="mt-1.5 text-2xl font-semibold text-[#0F62FE] dark:text-[#78A9FF] whitespace-nowrap">
-              {impact.kpis.avgSpeedup.toFixed(2)}×
+              <AnimatedNumber value={impact.kpis.avgSpeedup} decimals={2} suffix="×" />
             </div>
             <div className="mt-1 font-sans text-xs text-slate-500 dark:text-[#A8A8A8]">
               {activeRun.quantumMetrics.runtimeMs}ms vs {activeRun.classicalMetrics.runtimeMs}ms MILP
@@ -501,6 +505,7 @@ export function ImpactView({
               className="w-full h-[195px]"
               role="img"
               aria-label="Bus-by-bus utilization relief chart comparing Classical baseline vs IBM Qiskit dispatch"
+              onPointerLeave={() => setHoverBusId(null)}
             >
               {[0, 50, 75, 90, 100].map((tick) => {
                 const y = barToY(tick);
@@ -587,29 +592,42 @@ export function ImpactView({
                     : '#0F62FE';
 
                 const showLabel = busesToPlot.length <= 14 || idx % 2 === 0;
+                const isHover = hoverBusId === b.id;
+                const dim = hoverBusId !== null && !isHover;
+                const growDelay = reduceMotion ? 0 : idx * 0.05;
                 return (
-                  <g key={b.id}>
+                  <g
+                    key={b.id}
+                    onPointerEnter={() => setHoverBusId(b.id)}
+                    style={{ opacity: dim ? 0.4 : 1, transition: 'opacity 150ms ease' }}
+                  >
                     <rect
+                      x={cx - groupStep / 2}
+                      y={bPadT}
+                      width={groupStep}
+                      height={plotH}
+                      fill={isHover ? (isDark ? '#FFFFFF' : '#0F62FE') : 'transparent'}
+                      fillOpacity={isHover ? 0.07 : 0}
+                    />
+                    <motion.rect
                       x={cx - singleBarW - 1}
-                      y={cY}
                       width={singleBarW}
-                      height={Math.max(2, baseY - cY)}
                       rx={1.5}
                       fill={cFill}
                       fillOpacity={0.85}
-                    >
-                      <title>{`${b.id} (${b.name}) Classical: ${b.classicalUtilPct}%`}</title>
-                    </rect>
-                    <rect
+                      initial={{ y: reduceMotion ? cY : baseY, height: reduceMotion ? Math.max(2, baseY - cY) : 0 }}
+                      animate={{ y: cY, height: Math.max(2, baseY - cY) }}
+                      transition={{ duration: 0.7, delay: growDelay, ease: 'easeOut' }}
+                    />
+                    <motion.rect
                       x={cx + 1}
-                      y={qY}
                       width={singleBarW}
-                      height={Math.max(2, baseY - qY)}
                       rx={1.5}
                       fill={qFill}
-                    >
-                      <title>{`${b.id} (${b.name}) Qiskit: ${b.quantumUtilPct}%`}</title>
-                    </rect>
+                      initial={{ y: reduceMotion ? qY : baseY, height: reduceMotion ? Math.max(2, baseY - qY) : 0 }}
+                      animate={{ y: qY, height: Math.max(2, baseY - qY) }}
+                      transition={{ duration: 0.7, delay: growDelay + 0.08, ease: 'easeOut' }}
+                    />
                     {showLabel && (
                       <text
                         x={cx}
@@ -625,6 +643,39 @@ export function ImpactView({
                   </g>
                 );
               })}
+
+              {/* Hover trace: dashed levels + floating Before/After readout */}
+              {(() => {
+                const hb = busesToPlot.find((b) => b.id === hoverBusId);
+                if (!hb) return null;
+                const idx = busesToPlot.indexOf(hb);
+                const cx = bPadL + idx * groupStep + groupStep / 2;
+                const boxW = 118;
+                const boxX = cx > barChartW * 0.62 ? cx - boxW - 10 : cx + 10;
+                const cY = barToY(hb.classicalUtilPct);
+                const qY = barToY(hb.quantumUtilPct);
+                const traceColor = isDark ? '#C6C6C6' : '#475569';
+                const delta = Number((hb.classicalUtilPct - hb.quantumUtilPct).toFixed(1));
+                return (
+                  <g pointerEvents="none">
+                    <line x1={bPadL} y1={cY} x2={barChartW - bPadR} y2={cY} stroke={traceColor} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.7} />
+                    <line x1={bPadL} y1={qY} x2={barChartW - bPadR} y2={qY} stroke={isDark ? '#78A9FF' : '#0F62FE'} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.8} />
+                    <rect x={boxX} y={bPadT} width={boxW} height={54} rx={4} fill={isDark ? '#262626' : '#FFFFFF'} stroke={isDark ? '#525252' : '#CBD5E1'} />
+                    <text x={boxX + 8} y={bPadT + 13} fontSize="9" fontFamily="IBM Plex Mono, monospace" fontWeight="600" fill={isDark ? '#F4F4F4' : '#0F172A'}>
+                      {hb.id}
+                    </text>
+                    <text x={boxX + 8} y={bPadT + 26} fontSize="9.5" fontFamily="IBM Plex Mono, monospace" fill={isDark ? '#A8A8A8' : '#64748B'}>
+                      Before {hb.classicalUtilPct}%
+                    </text>
+                    <text x={boxX + 8} y={bPadT + 38} fontSize="9.5" fontFamily="IBM Plex Mono, monospace" fill={isDark ? '#78A9FF' : '#0F62FE'}>
+                      After {hb.quantumUtilPct}%
+                    </text>
+                    <text x={boxX + 8} y={bPadT + 50} fontSize="9" fontFamily="IBM Plex Mono, monospace" fill={delta >= 0 ? (isDark ? '#42BE65' : '#15803D') : (isDark ? '#FA4D56' : '#B91C1C')}>
+                      {delta >= 0 ? '−' : '+'}{Math.abs(delta)} pts
+                    </text>
+                  </g>
+                );
+              })()}
             </svg>
           </div>
         </div>

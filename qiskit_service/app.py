@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 
 from .qiskit_runner import execute_qiskit_job, probe_environment
 
-app = FastAPI(title="QGrid Studio — Real IBM Qiskit Execution Service", version="1.0.0")
+app = FastAPI(title="Digital Q-Grid Twin — Real IBM Qiskit Execution Service", version="1.0.0")
 
 
 @app.get("/health")

@@ -5,10 +5,10 @@ import {
   CloudSun,
   Download,
   Globe,
+  Loader2,
   Moon,
   Pause,
   Play,
-  Radio,
   RefreshCw,
   RotateCcw,
   Search,
@@ -26,16 +26,22 @@ import type {
   NodeSizeMode,
   PathViewMode,
   QiskitBackend,
+  QuantumAlgorithm,
+  QuantumOptimizationReport,
 } from '../types/grid';
 import { CLIMATE_PRESETS, LIVE_REGIONS } from '../constants';
 import { D3GridVisualizer } from '../components/D3GridVisualizer';
 import { ThreeGridVisualizer } from '../components/ThreeGridVisualizer';
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import { PulsingDot } from '../components/PulsingDot';
+import { QuantumRunTransparencyPanel } from '../components/QuantumRunTransparencyPanel';
 import { StatusIndicator } from '../components/StatusIndicator';
 
 interface OverviewViewProps {
   topology: GridTopology;
   summary: GridSummary;
   alerts: GridAlert[];
+  alertContextLabel: string;
   logs: HistoricalLogEntry[];
   activeBackend: QiskitBackend;
   climate: ClimateConditions;
@@ -50,7 +56,15 @@ interface OverviewViewProps {
   onSelectLiveSlot: (slotIndex: number) => void;
   onToggleLiveStream: () => void;
   isDark: boolean;
+  isJobWorking: boolean;
   lastOptimizationDelta: number | null;
+  lastOptimizationReport: QuantumOptimizationReport | null;
+  overviewAlgorithm: QuantumAlgorithm;
+  overviewLayersP: number;
+  overviewShots: number;
+  onChangeOverviewAlgorithm: (algo: QuantumAlgorithm) => void;
+  onChangeOverviewLayersP: (layers: number) => void;
+  onChangeOverviewShots: (shots: number) => void;
   onInjectFault: () => void;
   onRunQuantumOptimize: () => void;
   onResetGrid: () => void;
@@ -61,6 +75,7 @@ export function OverviewView({
   topology,
   summary,
   alerts,
+  alertContextLabel,
   logs,
   activeBackend,
   climate,
@@ -75,7 +90,15 @@ export function OverviewView({
   onSelectLiveSlot,
   onToggleLiveStream,
   isDark,
+  isJobWorking,
   lastOptimizationDelta,
+  lastOptimizationReport,
+  overviewAlgorithm,
+  overviewLayersP,
+  overviewShots,
+  onChangeOverviewAlgorithm,
+  onChangeOverviewLayersP,
+  onChangeOverviewShots,
   onInjectFault,
   onRunQuantumOptimize,
   onResetGrid,
@@ -124,6 +147,24 @@ export function OverviewView({
     };
   }, [liveStreamPayload, liveSlotIndex]);
 
+  const alertCounts = useMemo(() => {
+    let alarming = 0;
+    let warning = 0;
+    let resolved = 0;
+    for (const a of alerts) {
+      if (a.severity === 'alarming') alarming += 1;
+      else if (a.severity === 'warning') warning += 1;
+      else if (a.severity === 'resolved') resolved += 1;
+    }
+    return {
+      all: alerts.length,
+      alarming,
+      warning,
+      resolved,
+      active: alarming + warning,
+    };
+  }, [alerts]);
+
   const filteredAlerts = useMemo(() => {
     if (alertFilter === 'all') return alerts;
     return alerts.filter((a) => a.severity === alertFilter);
@@ -143,9 +184,11 @@ export function OverviewView({
   }, [logs, logStatusFilter, logSearch]);
 
   const latestLog = logs[0];
-  const accuracyEdge = latestLog
-    ? (latestLog.quantumAccuracy - latestLog.classicalAccuracy).toFixed(1)
-    : '7.4';
+  const displayQuantumAcc =
+    lastOptimizationReport?.quantumResult.accuracyPct ?? latestLog?.quantumAccuracy ?? 96.8;
+  const displayClassicalAcc =
+    lastOptimizationReport?.classicalBaseline.accuracyPct ?? latestLog?.classicalAccuracy ?? 89.4;
+  const accuracyDelta = Number((displayQuantumAcc - displayClassicalAcc).toFixed(1));
 
   const handleExportLogsCsv = () => {
     const headers = [
@@ -192,11 +235,11 @@ export function OverviewView({
     <div className="space-y-6">
       {/* Top KPI Strip */}
       <section aria-label="Grid summary metrics" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">Grid Health Index</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-              {summary.healthIndex}%
+              <AnimatedNumber value={summary.healthIndex} decimals={Number.isInteger(summary.healthIndex) ? 0 : 1} suffix="%" />
             </span>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
               {summary.healthyCount}G / {summary.warningCount}Y / {summary.alarmingCount}R
@@ -207,59 +250,81 @@ export function OverviewView({
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Quantum vs Classical Gain
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
-            <span className="text-2xl font-mono font-semibold text-[#0F62FE] dark:text-[#78A9FF] tabular-nums">
-              +{accuracyEdge}%
+            <span
+              className={`text-2xl font-mono font-semibold tabular-nums ${
+                accuracyDelta >= 0
+                  ? 'text-[#0F62FE] dark:text-[#78A9FF]'
+                  : 'text-[#D97706] dark:text-[#F1C21B]'
+              }`}
+            >
+              <AnimatedNumber
+                value={Math.abs(accuracyDelta)}
+                decimals={1}
+                prefix={accuracyDelta >= 0 ? '+' : '−'}
+                suffix="%"
+              />
             </span>
-            <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">dispatch accuracy</span>
+            <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">
+              {lastOptimizationReport ? 'same-QUBO sim' : 'dispatch accuracy'}
+            </span>
           </div>
           <div className="mt-2 text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
-            Q: {latestLog?.quantumAccuracy ?? 96.8}% · C: {latestLog?.classicalAccuracy ?? 89.4}%
+            Q: {displayQuantumAcc.toFixed(1)}% · C: {displayClassicalAcc.toFixed(1)}%
+            {lastOptimizationReport ? ` (${lastOptimizationReport.runtimeMs}ms)` : ''}
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Grid Load & Line Loss
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-2xl font-mono font-semibold text-slate-900 dark:text-[#F4F4F4] tabular-nums">
-              {summary.totalLoadMW}
+              <AnimatedNumber value={Number(summary.totalLoadMW)} decimals={Number.isInteger(Number(summary.totalLoadMW)) ? 0 : 1} />
             </span>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8]">MW</span>
           </div>
           <div className="mt-2 text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
             Loss {summary.totalLossMW} MW
             {lastOptimizationDelta !== null
-              ? ` · −${lastOptimizationDelta}% last run`
+              ? lastOptimizationDelta >= 0
+                ? ` · −${lastOptimizationDelta}% last run`
+                : ` · +${Math.abs(lastOptimizationDelta)}% last run`
               : ` · ${summary.congestionPct}% congested`}
           </div>
         </div>
 
-        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
+        <div className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-4">
           <div className="text-xs font-medium text-slate-500 dark:text-[#A8A8A8]">
             Active Grid Alerts
           </div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span
               className={`text-2xl font-mono font-semibold tabular-nums ${
-                summary.alarmingCount > 0
+                alertCounts.alarming > 0
                   ? 'text-[#DC2626] dark:text-[#FA4D56]'
-                  : summary.warningCount > 0
+                  : alertCounts.warning > 0
                   ? 'text-[#D97706] dark:text-[#F1C21B]'
                   : 'text-[#16A34A] dark:text-[#42BE65]'
               }`}
             >
-              {summary.alarmingCount + summary.warningCount}
+              <AnimatedNumber value={alertCounts.active} />
             </span>
-            <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">stressed buses</span>
+            <span className="text-xs text-slate-500 dark:text-[#A8A8A8]">
+              {alertCounts.active === 1 ? 'active alert' : 'active alerts'}
+            </span>
           </div>
           <div className="mt-2 text-xs text-slate-500 dark:text-[#A8A8A8] font-mono truncate">
-            {activeBackend}
+            {alertCounts.active > 0
+              ? `${alertCounts.alarming} alarming · ${alertCounts.warning} warning`
+              : alertCounts.resolved > 0
+              ? `All nominal · ${alertCounts.resolved} resolved`
+              : `All ${summary.totalNodes} buses nominal`}
           </div>
         </div>
       </section>
@@ -400,7 +465,7 @@ export function OverviewView({
 
               {liveSlotIndex === liveStreamPayload.currentSlotIndex ? (
                 <span className="inline-flex items-center gap-1 rounded border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                  <Radio className="h-2.5 w-2.5" aria-hidden="true" />
+                  <PulsingDot variant="green" size="h-1.5 w-1.5" />
                   Live Now
                 </span>
               ) : (
@@ -459,8 +524,8 @@ export function OverviewView({
       </section>
 
       {/* Main Grid Topology + Real-Time Alerts Split */}
-      <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        <div className="xl:col-span-8 rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
+      <section className="space-y-6">
+        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-[#393939]">
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-[#F4F4F4]">
@@ -534,24 +599,72 @@ export function OverviewView({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                disabled={isJobWorking}
                 onClick={onRunQuantumOptimize}
-                className="inline-flex items-center gap-1.5 rounded-md bg-[#0F62FE] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#0353E9] transition-colors whitespace-nowrap shrink-0"
+                data-testid="run-quantum-sim-btn"
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#0F62FE] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#0353E9] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
               >
-                <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-                Run Quantum Optimization
+                {isJobWorking ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {isJobWorking ? 'Running Quantum Simulator...' : 'Run in Quantum Simulator'}
               </button>
+
+              <select
+                aria-label="Quantum simulator algorithm"
+                value={overviewAlgorithm}
+                disabled={isJobWorking}
+                onChange={(e) => onChangeOverviewAlgorithm(e.target.value as QuantumAlgorithm)}
+                className="rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-2.5 py-2 text-xs font-mono text-slate-800 dark:text-[#E0E0E0] focus:border-[#0F62FE] focus:outline-none disabled:opacity-60"
+              >
+                <option value="QAOA">QAOA</option>
+                <option value="CVaR-QAOA">CVaR-QAOA</option>
+                <option value="BF-DCQO">BF-DCQO</option>
+                <option value="VQA">VQA</option>
+                <option value="VarQITE">VarQITE</option>
+              </select>
+
+              <select
+                aria-label="Quantum circuit depth layers"
+                value={overviewLayersP}
+                disabled={isJobWorking}
+                onChange={(e) => onChangeOverviewLayersP(Number(e.target.value))}
+                className="rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-2 py-2 text-xs font-mono text-slate-800 dark:text-[#E0E0E0] focus:border-[#0F62FE] focus:outline-none disabled:opacity-60"
+              >
+                <option value={1}>p=1</option>
+                <option value={2}>p=2</option>
+                <option value={3}>p=3</option>
+                <option value={4}>p=4</option>
+              </select>
+
+              <select
+                aria-label="Quantum simulator shot count"
+                value={overviewShots}
+                disabled={isJobWorking}
+                onChange={(e) => onChangeOverviewShots(Number(e.target.value))}
+                className="rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-2 py-2 text-xs font-mono text-slate-800 dark:text-[#E0E0E0] focus:border-[#0F62FE] focus:outline-none disabled:opacity-60"
+              >
+                <option value={1024}>1,024 shots</option>
+                <option value={4096}>4,096 shots</option>
+                <option value={8192}>8,192 shots</option>
+              </select>
+
               <button
                 type="button"
+                disabled={isJobWorking}
                 onClick={onInjectFault}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#161616] px-3 py-2 text-xs font-medium text-slate-700 dark:text-[#E0E0E0] hover:bg-slate-50 dark:hover:bg-[#353535] transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-[#525252] bg-white dark:bg-[#161616] px-3 py-2 text-xs font-medium text-slate-700 dark:text-[#E0E0E0] hover:bg-slate-50 dark:hover:bg-[#353535] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
               >
                 <AlertTriangle className="h-3.5 w-3.5 text-[#D97706] dark:text-[#F1C21B]" aria-hidden="true" />
                 Inject Grid Fault
               </button>
               <button
                 type="button"
+                disabled={isJobWorking}
                 onClick={onResetGrid}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-3 py-2 text-xs font-medium text-slate-600 dark:text-[#C6C6C6] hover:bg-slate-50 dark:hover:bg-[#353535] transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-[#525252] bg-white dark:bg-[#161616] px-3 py-2 text-xs font-medium text-slate-600 dark:text-[#C6C6C6] hover:bg-slate-50 dark:hover:bg-[#353535] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                 Reset Topology
@@ -590,7 +703,7 @@ export function OverviewView({
               isDark={isDark}
               nodeSizeMode={nodeSizeMode}
               onSelectNode={onInspectNode}
-              heightClass="h-[430px]"
+              heightClass="h-[500px] lg:h-[540px]"
             />
           ) : (
             <D3GridVisualizer
@@ -600,47 +713,72 @@ export function OverviewView({
               isDark={isDark}
               nodeSizeMode={nodeSizeMode}
               onSelectNode={onInspectNode}
-              heightClass="h-[430px]"
+              heightClass="h-[500px] lg:h-[540px]"
             />
           )}
         </div>
 
+        {/* Transparent Quantum Simulator Execution Audit */}
+        <QuantumRunTransparencyPanel
+          report={lastOptimizationReport}
+          topology={topology}
+          activeBackend={activeBackend}
+          algorithm={overviewAlgorithm}
+          layersP={overviewLayersP}
+          shots={overviewShots}
+          isRunning={isJobWorking}
+          onInspectNode={onInspectNode}
+        />
+
         {/* Real-Time Alerts Panel */}
-        <div className="xl:col-span-4 rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
-          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-[#393939]">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-[#F4F4F4]">
-              Real-Time Grid Alerts
-            </h2>
+        <div
+          data-testid="real-time-grid-alerts"
+          className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-slate-200 dark:border-[#393939]">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-[#F4F4F4]">
+                Real-Time Grid Alerts
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-[#A8A8A8]">
+                Live state for <span className="font-medium text-slate-700 dark:text-[#E0E0E0]">{topology.name}</span> · {alertContextLabel}
+              </p>
+            </div>
             <span className="text-xs font-mono text-slate-500 dark:text-[#A8A8A8] tabular-nums">
-              {filteredAlerts.length} events
+              {alertCounts.active} active · {alertCounts.resolved} resolved
             </span>
           </div>
 
-          <div className="mt-3 flex items-center gap-1 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#161616] p-0.5">
+          <div className="mt-3 flex w-full sm:max-w-lg items-center gap-1 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#161616] p-0.5">
             {(['all', 'alarming', 'warning', 'resolved'] as const).map((sev) => (
               <button
                 key={sev}
                 type="button"
                 onClick={() => setAlertFilter(sev)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded capitalize transition-colors whitespace-nowrap ${
+                className={`flex-1 py-1.5 px-2 text-xs font-medium rounded capitalize transition-colors whitespace-nowrap ${
                   alertFilter === sev
                     ? 'bg-white dark:bg-[#353535] text-slate-900 dark:text-white shadow-xs'
                     : 'text-slate-600 dark:text-[#A8A8A8] hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                {sev}
+                {sev}{' '}
+                <span className="font-mono text-[11px] opacity-80 tabular-nums">
+                  ({alertCounts[sev]})
+                </span>
               </button>
             ))}
           </div>
 
-          <div className="mt-3 divide-y divide-slate-100 dark:divide-[#393939] max-h-[435px] overflow-y-auto pr-1">
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[560px] overflow-y-auto pr-1">
             {filteredAlerts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500 dark:text-[#A8A8A8]">
-                No alerts in this category. All monitored buses are operating smoothly.
+              <div className="col-span-full py-10 text-center text-xs text-slate-500 dark:text-[#A8A8A8]">
+                {alertFilter === 'all' || alertFilter === 'alarming' || alertFilter === 'warning'
+                  ? `No ${alertFilter === 'all' ? 'active' : alertFilter} alerts on ${topology.name}. All ${summary.totalNodes} buses and ${topology.edges.length} corridors are within nominal limits.`
+                  : `No resolved simulator events recorded yet for the current ${topology.name} state. Run the Quantum Simulator to optimize and log resolved buses.`}
               </div>
             ) : (
               filteredAlerts.map((alert) => (
-                <div key={alert.id} className="py-3 space-y-1.5">
+                <div key={alert.id} className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-3.5 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <StatusIndicator status={alert.severity} compact badgeStyle />
                     <span className="text-[11px] font-mono text-slate-400 dark:text-[#8D8D8D] tabular-nums">
