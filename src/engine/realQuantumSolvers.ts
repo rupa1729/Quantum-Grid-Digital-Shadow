@@ -1852,6 +1852,8 @@ export function runPartitionedQuantumSolver(params: {
   let fidelityAccum = 0;
   let blockCount = 0;
   let totalIters = 0;
+  let lastSweepParams: number[] | undefined;
+  const finalSweepBlocks: { start: number; k: number; cdfMasks: number[]; cdfProbs: number[] }[] = [];
 
   for (let sweep = 0; sweep < 2; sweep++) {
     for (let start = 0; start < n; start += blockSize) {
@@ -1905,6 +1907,28 @@ export function runPartitionedQuantumSolver(params: {
         globalBits.set(candidate);
       }
 
+      if (sweep === 1) {
+        if (!lastSweepParams && subRes.optimalParams && subRes.optimalParams.length > 0) {
+          lastSweepParams = subRes.optimalParams;
+        }
+        if (subRes.sampleSummary && subRes.sampleSummary.counts.size > 0) {
+          const cdfMasks: number[] = [];
+          const cdfProbs: number[] = [];
+          let totalCnt = 0;
+          for (const cnt of subRes.sampleSummary.counts.values()) totalCnt += cnt;
+          let runProb = 0;
+          for (const [m, cnt] of subRes.sampleSummary.counts.entries()) {
+            runProb += cnt / Math.max(1, totalCnt);
+            cdfMasks.push(m);
+            cdfProbs.push(runProb);
+          }
+          if (cdfProbs.length > 0) {
+            cdfProbs[cdfProbs.length - 1] = 1.0;
+            finalSweepBlocks.push({ start, k, cdfMasks, cdfProbs });
+          }
+        }
+      }
+
       maxDepth = Math.max(maxDepth, subRes.circuitDepth);
       totalTwoQ += subRes.twoQubitGates;
       fidelityAccum += subRes.fidelityPct;
@@ -1923,11 +1947,74 @@ export function runPartitionedQuantumSolver(params: {
       ? expectedRatioFromBits
       : Math.max(0.1, expectedRatioFromBits * (0.45 + 0.55 * (avgFidelity / 100)));
 
+  // Reconstruct genuine composite full-graph shot samples from the final partitioned product state
+  let compositeSampleSummary: ShotSampleSummary | undefined;
+  if (finalSweepBlocks.length > 0) {
+    const sampleRng = createSeededRng(seed + 1301);
+    const compCounts = new Map<string, { bits: Uint8Array; count: number; energy: number }>();
+    const totalSamples = Math.max(256, Math.min(shots, 4096));
+    let totalSampleEnergy = 0;
+
+    for (let s = 0; s < totalSamples; s++) {
+      const sampleBits = Uint8Array.from(globalBits);
+      for (const blk of finalSweepBlocks) {
+        const u = sampleRng();
+        let chosenMask = blk.cdfMasks[blk.cdfMasks.length - 1];
+        for (let idx = 0; idx < blk.cdfProbs.length; idx++) {
+          if (u <= blk.cdfProbs[idx]) {
+            chosenMask = blk.cdfMasks[idx];
+            break;
+          }
+        }
+        for (let localI = 0; localI < blk.k; localI++) {
+          sampleBits[blk.start + localI] = (chosenMask >> localI) & 1;
+        }
+      }
+      let key = '';
+      for (let i = 0; i < n; i++) key += sampleBits[i] ? '1' : '0';
+      const existing = compCounts.get(key);
+      if (existing) {
+        existing.count += 1;
+        totalSampleEnergy += existing.energy;
+      } else {
+        const eVal = evaluateQuboBits(problem, sampleBits);
+        compCounts.set(key, { bits: sampleBits, count: 1, energy: eVal });
+        totalSampleEnergy += eVal;
+      }
+    }
+
+    const entries = Array.from(compCounts.entries()).map(([key, val]) => ({ key, ...val }));
+    const bestEntry = [...entries].sort((a, b) => a.energy - b.energy)[0];
+    const byFreq = [...entries].sort((a, b) => b.count - a.count).slice(0, 8);
+    const topBitstrings: BitstringCount[] = byFreq.map((item) => ({
+      bitstring: `|${item.key.slice(0, 14)}${item.key.length > 14 ? '…' : ''}⟩`,
+      counts: Math.round((item.count / totalSamples) * shots),
+      probability: Number((item.count / totalSamples).toFixed(4)),
+      energyCost: Number(item.energy.toFixed(2)),
+      isOptimal: bestEntry ? item.energy <= bestEntry.energy + 1e-6 : false,
+    }));
+
+    compositeSampleSummary = {
+      counts: new Map<number, number>(),
+      expectationEnergy: totalSampleEnergy / totalSamples,
+      cvarEnergy: bestEntry ? bestEntry.energy : finalEnergy,
+      bestMeasuredMask: 0,
+      bestMeasuredEnergy: bestEntry ? bestEntry.energy : finalEnergy,
+      mostFrequentMask: 0,
+      mostFrequentEnergy: byFreq[0]?.energy ?? finalEnergy,
+      circuitFidelity: avgFidelity / 100,
+      effectiveFidelityPct: avgFidelity,
+      topBitstrings,
+    };
+  }
+
   return {
     algorithm,
     bits: globalBits,
     achievedEnergy: finalEnergy,
-    expectationEnergy: eMaxRef - noiseDampedRatio * (eMaxRef - eMinRef),
+    expectationEnergy: compositeSampleSummary
+      ? compositeSampleSummary.expectationEnergy
+      : eMaxRef - noiseDampedRatio * (eMaxRef - eMinRef),
     approxRatio: noiseDampedRatio,
     runtimeMs: Math.max(0.2, Number((nowMs() - t0).toFixed(1))),
     circuitDepth: maxDepth,
@@ -1938,8 +2025,10 @@ export function runPartitionedQuantumSolver(params: {
       history.map((e) => computeApproxRatio(e, eMinRef, eMaxRef)),
       15
     ),
-    optimalBitstring: bitsToString(globalBits),
+    optimalBitstring: bitsToString(globalBits, 14),
     executionMode: 'partitioned_statevector',
+    optimalParams: lastSweepParams,
+    sampleSummary: compositeSampleSummary,
   };
 }
 

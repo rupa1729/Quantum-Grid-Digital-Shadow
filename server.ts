@@ -287,22 +287,113 @@ async function startServer() {
       const backend = body.backend as QiskitBackend;
       const seed = Math.floor(body.seed);
 
-      const jobId = `job-opt-${Date.now()}`;
+      const climate = body.climate ? parseClimate(body.climate) ?? undefined : undefined;
+      const algorithm: QuantumAlgorithm = ALLOWED_QUANTUM_ALGOS.has(
+        body.algorithm as QuantumAlgorithm
+      )
+        ? (body.algorithm as QuantumAlgorithm)
+        : 'QAOA';
+      const optimizer: ClassicalOptimizer = ALLOWED_OPTIMIZERS.has(
+        body.optimizer as ClassicalOptimizer
+      )
+        ? (body.optimizer as ClassicalOptimizer)
+        : 'COBYLA';
+      const layersP =
+        typeof body.layersP === 'number' && Number.isFinite(body.layersP)
+          ? Math.max(1, Math.min(6, Math.round(body.layersP)))
+          : 3;
+      const shots =
+        typeof body.shots === 'number' && Number.isFinite(body.shots)
+          ? Math.max(256, Math.min(100000, Math.round(body.shots)))
+          : 4096;
+      const rawConstraints = Array.isArray(body.constraints) ? body.constraints : [];
+      const constraints = rawConstraints.filter((c): c is ConstraintId =>
+        ALLOWED_CONSTRAINTS.has(c as ConstraintId)
+      );
+
+      const jobId = `job-qsim-${Date.now()}`;
       activeJob = {
         jobId,
-        algorithm: 'QAOA p=3 Grid Dispatch',
+        algorithm: `${algorithm} p=${layersP} Quantum Simulator`,
         backend,
         startedAt: new Date().toISOString(),
         status: 'working',
       };
 
-      await new Promise((r) => setTimeout(r, 220));
+      // If real Python Qiskit Aer or a Qiskit Python microservice is available, execute on Qiskit Aer first
+      let externalMeasurement:
+        | NonNullable<Parameters<typeof runQuantumGridOptimization>[2]>['externalMeasurement']
+        | undefined;
+      try {
+        const caps = await getQiskitRuntimeCapabilities();
+        if (
+          (caps.localPythonQiskitAvailable || caps.qiskitServiceUrlConfigured) &&
+          backend.startsWith('aer_simulator') &&
+          body.topology.nodes.length <= 16
+        ) {
+          const pyJob = await executeRealQiskitJob({
+            topology: body.topology,
+            climate: climate ?? {
+              locationName: 'Nominal Grid Conditions',
+              ambientTempC: 25,
+              windSpeedMs: 5,
+              solarIrradianceWm2: 700,
+              stormRiskPct: 5,
+              peakTariffMultiplier: 1.0,
+            },
+            constraints:
+              constraints.length > 0
+                ? constraints
+                : ['thermal_limits', 'voltage_stability', 'renewable_intermittency', 'substation_capacity'],
+            backend,
+            algorithm,
+            optimizer,
+            layersP,
+            shots,
+          });
+          if (pyJob.status === 'COMPLETED' && pyJob.optimalBitstring) {
+            const cleanBits = pyJob.optimalBitstring.replace(/[^01]/g, '');
+            const bits = new Uint8Array(body.topology.nodes.length);
+            for (let i = 0; i < bits.length; i++) {
+              bits[i] = cleanBits[i % Math.max(1, cleanBits.length)] === '1' ? 1 : 0;
+            }
+            externalMeasurement = {
+              executionEngine: 'qiskit_aer_python',
+              executionEngineLabel: `Qiskit AerSimulator (${caps.localQiskitVersion ? `qiskit ${caps.localQiskitVersion}` : 'Python'})`,
+              jobId: pyJob.jobId,
+              bits,
+              achievedQuboEnergy: pyJob.achievedQuboEnergy ?? 0,
+              expectationQuboEnergy: pyJob.expectationQuboEnergy ?? pyJob.achievedQuboEnergy ?? 0,
+              topBitstrings: pyJob.topBitstrings ?? [],
+              optimalAngles: pyJob.optimalAngles ?? [],
+              circuitDepth: pyJob.transpiledDepth,
+              twoQubitGates: pyJob.twoQubitGateCount,
+              fidelityPct: pyJob.fidelityPct ?? 99.9,
+              runtimeMs: pyJob.runtimeMs ?? 100,
+              openQasm3: pyJob.openQasm3,
+            };
+          }
+        }
+      } catch {
+        // Fall through cleanly to built-in exact complex statevector quantum simulator
+      }
 
-      const result = runQuantumGridOptimization(body.topology, seed);
+      const result = runQuantumGridOptimization(body.topology, seed, {
+        climate,
+        backend,
+        algorithm,
+        optimizer,
+        layersP,
+        shots,
+        constraints: constraints.length > 0 ? constraints : undefined,
+        executionLocation: 'server_api',
+        jobId,
+        externalMeasurement,
+      });
       activeJob = null;
 
       return res.json({
-        jobId,
+        jobId: result.report.jobId,
         source: 'live_backend',
         status: getExecutionStatus(),
         ...result,

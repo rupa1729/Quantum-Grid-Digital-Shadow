@@ -17,6 +17,7 @@ import type {
   QiskitBackend,
   QuantumAlgorithm,
   QuantumCircuitConfig,
+  QuantumOptimizationReport,
 } from './types/grid';
 import {
   LIVE_REGIONS,
@@ -28,7 +29,6 @@ import {
 import {
   ACCURACY_TIMELINE_DATA,
   CONSTRAINT_PERFORMANCE_ROWS,
-  INITIAL_ALERTS,
   INITIAL_GRID_TOPOLOGY,
   INITIAL_HISTORICAL_LOGS,
   INITIAL_KERNEL_QA_RECORDS,
@@ -41,6 +41,7 @@ import {
 import {
   applyClimateFactors,
   computeGridSummary,
+  deriveGridAlertsFromTopology,
   injectGridFault,
   rerouteSingleNodeViaQuantum,
   simulateQuantumCircuit,
@@ -117,13 +118,24 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string>(
     INITIAL_LIVE_SNAPSHOT.topology.nodes[0]?.id ?? 'K01'
   );
-  const [alerts, setAlerts] = useState<GridAlert[]>(
-    INITIAL_LIVE_SNAPSHOT.alerts.length > 0 ? INITIAL_LIVE_SNAPSHOT.alerts : INITIAL_ALERTS
-  );
+  const [alertMeta, setAlertMeta] = useState<{
+    timestamp?: string;
+    contextLabel: string;
+    resolvedAlerts: GridAlert[];
+  }>(() => ({
+    timestamp: `${INITIAL_LIVE_SNAPSHOT.slotTimestamp.slice(11, 16) || '13:30'}:00`,
+    contextLabel: `${INITIAL_LIVE_REGION.name} · Diurnal Model`,
+    resolvedAlerts: [],
+  }));
   const [logs, setLogs] = useState<HistoricalLogEntry[]>(INITIAL_HISTORICAL_LOGS);
   const [qaRecords, setQaRecords] = useState<KernelQARecord[]>(INITIAL_KERNEL_QA_RECORDS);
   const [activeBackend, setActiveBackend] = useState<QiskitBackend>('aer_simulator (statevector)');
   const [lastOptimizationDelta, setLastOptimizationDelta] = useState<number | null>(null);
+  const [lastOptimizationReport, setLastOptimizationReport] =
+    useState<QuantumOptimizationReport | null>(null);
+  const [overviewAlgorithm, setOverviewAlgorithm] = useState<QuantumAlgorithm>('QAOA');
+  const [overviewLayersP, setOverviewLayersP] = useState<number>(3);
+  const [overviewShots, setOverviewShots] = useState<number>(4096);
   const [faultCounter, setFaultCounter] = useState(1);
 
   const [circuitResult, setCircuitResult] = useState(() =>
@@ -162,8 +174,17 @@ export default function App() {
       setTopology(snapshot.topology);
       setClimate(snapshot.climate);
       setLastOptimizationDelta(null);
+      setLastOptimizationReport(null);
       setIsLiveStreaming(false);
-      setAlerts(snapshot.alerts.length > 0 ? snapshot.alerts : INITIAL_ALERTS);
+      const slotTime = snapshot.slotTimestamp.slice(11, 16) || '13:30';
+      setAlertMeta({
+        timestamp: `${slotTime}:00`,
+        contextLabel:
+          payload.source === 'open_meteo_live'
+            ? `Open-Meteo Live (${slotTime})`
+            : `Cached Climate Model (${slotTime})`,
+        resolvedAlerts: [],
+      });
       setSelectedNodeId((prev) =>
         snapshot.topology.nodes.some((n) => n.id === prev)
           ? prev
@@ -241,9 +262,17 @@ export default function App() {
         setBaseTopology(snapshot.topology);
         setTopology(snapshot.topology);
         setClimate(snapshot.climate);
-        if (snapshot.alerts.length > 0) {
-          setAlerts(snapshot.alerts);
-        }
+        setLastOptimizationDelta(null);
+        setLastOptimizationReport(null);
+        const slotTime = snapshot.slotTimestamp.slice(11, 16) || '13:30';
+        setAlertMeta({
+          timestamp: `${slotTime}:00`,
+          contextLabel:
+            liveStreamPayload.source === 'open_meteo_live'
+              ? `Open-Meteo Replay (${slotTime})`
+              : `Forecast Replay (${slotTime})`,
+          resolvedAlerts: [],
+        });
         return nextSlot;
       });
     }, 1400);
@@ -254,6 +283,11 @@ export default function App() {
   const summary = useMemo(
     () => computeGridSummary(topology.nodes, topology.edges),
     [topology]
+  );
+
+  const alerts = useMemo(
+    () => deriveGridAlertsFromTopology(topology, alertMeta),
+    [topology, alertMeta]
   );
 
   const handleToggleTheme = useCallback(() => {
@@ -302,8 +336,13 @@ export default function App() {
       setBaseTopology(INITIAL_GRID_TOPOLOGY);
       setClimate(NOMINAL_CLIMATE_CONDITIONS);
       setTopology(INITIAL_GRID_TOPOLOGY);
-      setAlerts(INITIAL_ALERTS);
+      setAlertMeta({
+        timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+        contextLabel: 'IEEE 14-Bus Synthetic Baseline',
+        resolvedAlerts: [],
+      });
       setLastOptimizationDelta(null);
+      setLastOptimizationReport(null);
       setSelectedNodeId('B05');
       return;
     }
@@ -325,9 +364,16 @@ export default function App() {
     setTopology(snapshot.topology);
     setClimate(snapshot.climate);
     setLastOptimizationDelta(null);
-    if (snapshot.alerts.length > 0) {
-      setAlerts(snapshot.alerts);
-    }
+    setLastOptimizationReport(null);
+    const slotTime = snapshot.slotTimestamp.slice(11, 16) || '13:30';
+    setAlertMeta({
+      timestamp: `${slotTime}:00`,
+      contextLabel:
+        liveStreamPayload.source === 'open_meteo_live'
+          ? `Open-Meteo Slot (${slotTime})`
+          : `Climate Slot (${slotTime})`,
+      resolvedAlerts: [],
+    });
   };
 
   const handleToggleLiveStream = () => {
@@ -339,16 +385,29 @@ export default function App() {
     setClimate(nextClimate);
     const adjusted = applyClimateFactors(baseTopology, nextClimate);
     setTopology(adjusted);
+    setLastOptimizationDelta(null);
+    setLastOptimizationReport(null);
+    setAlertMeta({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: `Climate: ${nextClimate.locationName}`,
+      resolvedAlerts: [],
+    });
   };
 
   const handleInjectFault = () => {
     setIsLiveStreaming(false);
     const seed = 42 + faultCounter * 19;
     setFaultCounter((c) => c + 1);
-    const { topology: nextTopo, alerts: newAlerts } = injectGridFault(topology, seed);
+    const { topology: nextTopo } = injectGridFault(topology, seed);
     const nextSummary = computeGridSummary(nextTopo.nodes, nextTopo.edges);
     setTopology(nextTopo);
-    setAlerts((prev) => [...newAlerts, ...prev].slice(0, 24));
+    setLastOptimizationDelta(null);
+    setLastOptimizationReport(null);
+    setAlertMeta({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: 'Fault Injection Event',
+      resolvedAlerts: [],
+    });
     setLogs((prev) => [
       {
         id: `log-fault-${Date.now()}`,
@@ -378,7 +437,7 @@ export default function App() {
       mode: 'working',
       activeJob: {
         jobId: `job-opt-${Date.now()}`,
-        algorithm: 'QAOA p=3 Grid Dispatch',
+        algorithm: `${overviewAlgorithm} p=${overviewLayersP} (${overviewShots} shots)`,
         backend: activeBackend,
         startedAt: new Date().toISOString(),
         status: 'working',
@@ -390,48 +449,82 @@ export default function App() {
         topology: nextTopo,
         lossReductionPct,
         resolvedAlerts,
+        report,
+        circuitResult: nextCircuitResult,
         status: nextStatus,
       } = await executeGridOptimizationJob({
         topology,
         backend: activeBackend,
         seed,
+        climate,
+        algorithm: overviewAlgorithm,
+        layersP: overviewLayersP,
+        shots: overviewShots,
+        optimizer: 'COBYLA',
       });
 
-      const nextSummary = computeGridSummary(nextTopo.nodes, nextTopo.edges);
+      const nextSummary = report.afterSummary;
       setTopology(nextTopo);
       setLastOptimizationDelta(lossReductionPct);
+      setLastOptimizationReport(report);
       setBackendStatus(nextStatus);
+      setCircuitResult(nextCircuitResult);
 
-      if (resolvedAlerts.length > 0) {
-        setAlerts((prev) => [...resolvedAlerts, ...prev].slice(0, 24));
-      }
+      const engineTag =
+        report.executionEngine === 'qiskit_aer_python'
+          ? 'Qiskit Aer'
+          : report.executionEngine === 'exact_statevector_simulator'
+          ? 'Exact Statevector'
+          : 'Partitioned Statevector';
 
-      setCircuitResult(
-        simulateQuantumCircuit({
-          ansatz: 'QAOA',
-          qubits: Math.min(8, Math.max(4, Math.ceil(nextTopo.nodes.length / 2))),
-          layers: 3,
-          shots: 4096,
-          backend: activeBackend,
-          enableNoise: !activeBackend.includes('aer_simulator'),
-          seed,
-        })
-      );
+      const runTimestamp = new Date(report.timestampUtc).toLocaleTimeString('en-US', {
+        hour12: false,
+      });
+
+      setAlertMeta({
+        timestamp: runTimestamp,
+        contextLabel: `${report.algorithm} p=${report.layersP} (${engineTag})`,
+        resolvedAlerts,
+      });
+
+      const newQa: KernelQARecord = {
+        id: `qa-opt-${Date.now()}`,
+        runId: report.jobId.toUpperCase().slice(0, 16),
+        timestamp: new Date(report.timestampUtc).toLocaleTimeString('en-US', { hour12: false }),
+        modelName: `${report.algorithm} (q=${report.qubits}, p=${report.layersP})`,
+        solverType: 'quantum',
+        kernelOrAnsatz: `${engineTag} · ${report.shots} shots`,
+        datasetName: nextTopo.name,
+        iteration: report.iterations,
+        qaStatus:
+          report.quantumResult.accuracyPct >= 93
+            ? 'pass'
+            : report.quantumResult.accuracyPct >= 82
+            ? 'warning'
+            : 'fail',
+        kernelAlignment: Number(Math.min(0.995, (report.fidelityPct / 100) * 0.995).toFixed(3)),
+        accuracyPct: report.quantumResult.accuracyPct,
+        lossReductionPct: report.lossReductionPct,
+        shotVariance: Number((1 / Math.sqrt(Math.max(1, report.shots))).toFixed(4)),
+        gateCount: nextCircuitResult.gates.length,
+        runtimeMs: report.runtimeMs,
+      };
+      setQaRecords((prev) => [newQa, ...prev]);
 
       setLogs((prev) => [
         {
           id: `log-opt-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+          timestamp: new Date(report.timestampUtc).toLocaleTimeString('en-US', { hour12: false }),
           iteration: (prev[0]?.iteration ?? 12) + 1,
-          solver: `QAOA p=3 (${activeBackend.split(' ')[0]})`,
+          solver: `${report.algorithm} p=${report.layersP} (${engineTag})`,
           datasetName: nextTopo.name,
           healthyCount: nextSummary.healthyCount,
           warningCount: nextSummary.warningCount,
           alarmingCount: nextSummary.alarmingCount,
-          quantumAccuracy: 97.6,
-          classicalAccuracy: 89.8,
+          quantumAccuracy: report.quantumResult.accuracyPct,
+          classicalAccuracy: report.classicalBaseline.accuracyPct,
           totalLossMW: nextSummary.totalLossMW,
-          runtimeMs: 328,
+          runtimeMs: report.runtimeMs,
           status:
             nextSummary.alarmingCount > 0
               ? 'alarming'
@@ -459,8 +552,14 @@ export default function App() {
       setBaseTopology(snapshot.topology);
       setTopology(snapshot.topology);
       setClimate(snapshot.climate);
-      setAlerts(snapshot.alerts.length > 0 ? snapshot.alerts : INITIAL_ALERTS);
+      const slotTime = snapshot.slotTimestamp.slice(11, 16) || '13:30';
+      setAlertMeta({
+        timestamp: `${slotTime}:00`,
+        contextLabel: `Reset to Live Slot (${slotTime})`,
+        resolvedAlerts: [],
+      });
       setLastOptimizationDelta(null);
+      setLastOptimizationReport(null);
       setSelectedNodeId(snapshot.topology.nodes[0]?.id ?? 'K01');
       return;
     }
@@ -468,8 +567,13 @@ export default function App() {
     setBaseTopology(INITIAL_GRID_TOPOLOGY);
     setClimate(NOMINAL_CLIMATE_CONDITIONS);
     setTopology(INITIAL_GRID_TOPOLOGY);
-    setAlerts(INITIAL_ALERTS);
+    setAlertMeta({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: 'IEEE 14-Bus Reset',
+      resolvedAlerts: [],
+    });
     setLastOptimizationDelta(null);
+    setLastOptimizationReport(null);
     setSelectedNodeId('B05');
   };
 
@@ -481,13 +585,24 @@ export default function App() {
   const handleRerouteNode = (nodeId: string) => {
     const { topology: nextTopo, alert } = rerouteSingleNodeViaQuantum(topology, nodeId);
     setTopology(nextTopo);
-    if (alert) {
-      setAlerts((prev) => [alert, ...prev].slice(0, 24));
-    }
+    setAlertMeta((prev) => ({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: `Quantum Reroute (${nodeId})`,
+      resolvedAlerts: alert
+        ? [alert, ...prev.resolvedAlerts.filter((a) => a.nodeId !== alert.nodeId)]
+        : prev.resolvedAlerts,
+    }));
   };
 
   const handleAdjustNodeStress = (nodeId: string, utilizationPct: number) => {
     setTopology((prev) => updateNodeLoadStress(prev, nodeId, utilizationPct));
+    setLastOptimizationDelta(null);
+    setLastOptimizationReport(null);
+    setAlertMeta({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: `Diagnostics Stress (${nodeId}: ${utilizationPct}%)`,
+      resolvedAlerts: [],
+    });
   };
 
   const handleExecuteCircuit = (config: QuantumCircuitConfig) => {
@@ -607,6 +722,13 @@ export default function App() {
     setLiveStreamPayload(null);
     setBaseTopology(nextTopo);
     setTopology(nextTopo);
+    setAlertMeta({
+      timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+      contextLabel: `Loaded Dataset: ${nextTopo.name}`,
+      resolvedAlerts: [],
+    });
+    setLastOptimizationDelta(null);
+    setLastOptimizationReport(null);
     setSelectedNodeId(nextTopo.nodes[0]?.id ?? 'B01');
     setActiveTab('overview');
   };
@@ -723,6 +845,7 @@ export default function App() {
               topology={topology}
               summary={summary}
               alerts={alerts}
+              alertContextLabel={alertMeta.contextLabel}
               logs={logs}
               activeBackend={activeBackend}
               climate={climate}
@@ -737,7 +860,15 @@ export default function App() {
               onSelectLiveSlot={handleSelectLiveSlot}
               onToggleLiveStream={handleToggleLiveStream}
               isDark={isDark}
+              isJobWorking={isJobWorking}
               lastOptimizationDelta={lastOptimizationDelta}
+              lastOptimizationReport={lastOptimizationReport}
+              overviewAlgorithm={overviewAlgorithm}
+              overviewLayersP={overviewLayersP}
+              overviewShots={overviewShots}
+              onChangeOverviewAlgorithm={setOverviewAlgorithm}
+              onChangeOverviewLayersP={setOverviewLayersP}
+              onChangeOverviewShots={setOverviewShots}
               onInjectFault={handleInjectFault}
               onRunQuantumOptimize={() => void handleRunQuantumOptimize()}
               onResetGrid={handleResetGrid}
