@@ -56,6 +56,8 @@ export interface NoiseModelParams {
 
 export interface ShotSampleSummary {
   counts: Map<number, number>;
+  /** Fraction of measured shots landing exactly on a ground-state bitstring (E <= E_min + 1e-6). */
+  groundStateProbability: number;
   expectationEnergy: number;
   cvarEnergy: number;
   bestMeasuredMask: number;
@@ -126,6 +128,29 @@ export function bitsToMask(bits: Uint8Array): number {
     if (bits[i]) mask |= 1 << i;
   }
   return mask;
+}
+
+/**
+ * Thermal / capacity penalty floor for heavily loaded feeders.
+ *
+ * Co-dispatching both endpoints of a feeder costs Q_ii + Q_jj + Q_ij, while dispatching only the
+ * better endpoint costs min(Q_ii, Q_jj). Requiring Q_ij >= -max(Q_ii, Q_jj) + margin guarantees
+ * that co-dispatching across a congested feeder (flowRatio >= threshold) is never energetically
+ * preferred over dispatching a single endpoint, turning the soft thermal penalty into an
+ * effective constraint without changing any other term.
+ */
+export function applyFeederPenaltyFloor(
+  linearTerms: number[],
+  edgeTerms: { i: number; j: number; qij: number; flowRatio: number }[],
+  options: { flowRatioThreshold?: number; margin?: number } = {}
+): { i: number; j: number; qij: number }[] {
+  const threshold = options.flowRatioThreshold ?? 0.9;
+  const margin = options.margin ?? 0.25;
+  return edgeTerms.map(({ i, j, qij, flowRatio }) => {
+    if (flowRatio < threshold) return { i, j, qij };
+    const floor = -Math.max(linearTerms[i] ?? 0, linearTerms[j] ?? 0) + margin;
+    return { i, j, qij: Math.max(qij, Math.round(floor * 100) / 100) };
+  });
 }
 
 export function buildFullQuboProblem(
@@ -313,6 +338,48 @@ export function computeApproxRatio(energy: number, eMin: number, eMax: number): 
   const span = eMax - eMin;
   if (span <= 1e-9) return 1.0;
   return Math.max(0, Math.min(1, (eMax - energy) / span));
+}
+
+/**
+ * Measurement-derived reference energy bounds for n > 12 (no exact 2^n spectrum available):
+ * E_max from empty / full / biased-random dispatch vectors, E_min as the best of the all-ones,
+ * greedy and simulated-annealing energies on the exact same QUBO. Replaces any hard-coded ratio.
+ */
+export function estimateEnergyBounds(
+  problem: FullQuboProblem,
+  seed: number
+): { eMin: number; eMax: number } {
+  const n = problem.n;
+  const rng = createSeededRng(seed + 17);
+  const allOnes = new Uint8Array(n).fill(1);
+  const onesEnergy = evaluateQuboBits(problem, allOnes);
+  let eMax = Math.max(evaluateQuboBits(problem, new Uint8Array(n)), onesEnergy);
+  for (let t = 0; t < 40; t++) {
+    const randBits = new Uint8Array(n);
+    for (let i = 0; i < n; i++) randBits[i] = rng() < 0.75 ? 1 : 0;
+    eMax = Math.max(eMax, evaluateQuboBits(problem, randBits));
+  }
+  const eMinSeed = Math.min(0, onesEnergy);
+  const greedy = runGreedyDispatch(problem, eMinSeed, eMax);
+  const sa = runSimulatedAnnealing(problem, eMinSeed, eMax, seed + 11);
+  return { eMin: Math.min(eMinSeed, greedy.achievedEnergy, sa.achievedEnergy), eMax };
+}
+
+/**
+ * Deterministically completes a partially-decided dispatch vector: bits [0, fixedCount) are kept,
+ * the remaining nodes are committed greedily (most negative Q_ii first) while ΔE < 0.
+ * Used when fewer qubits than nodes were executed, instead of tiling copies of measured bits.
+ */
+export function completeBitsGreedy(problem: FullQuboProblem, bits: Uint8Array, fixedCount: number): void {
+  const order: number[] = [];
+  for (let i = fixedCount; i < problem.n; i++) {
+    bits[i] = 0;
+    order.push(i);
+  }
+  order.sort((a, b) => problem.linear[a] - problem.linear[b]);
+  for (const idx of order) {
+    if (deltaEnergyFlip(problem, bits, idx) < 0) bits[idx] = 1;
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -583,8 +650,14 @@ export function sampleStatevectorShots(
     isOptimal: entry.mask === spectrum.bestMask || Math.abs(entry.energy - spectrum.eMin) < 1e-6,
   }));
 
+  let groundCount = 0;
+  for (const entry of entries) {
+    if (entry.energy <= spectrum.eMin + 1e-6) groundCount += entry.count;
+  }
+
   return {
     counts,
+    groundStateProbability: groundCount / Math.max(1, shots),
     expectationEnergy,
     cvarEnergy,
     bestMeasuredMask,
@@ -1994,8 +2067,15 @@ export function runPartitionedQuantumSolver(params: {
       isOptimal: bestEntry ? item.energy <= bestEntry.energy + 1e-6 : false,
     }));
 
+    // No exact ground state for large grids: count samples at or below the best-known reference energy.
+    let refEnergyHits = 0;
+    for (const item of entries) {
+      if (item.energy <= eMinRef + 1e-6) refEnergyHits += item.count;
+    }
+
     compositeSampleSummary = {
       counts: new Map<number, number>(),
+      groundStateProbability: refEnergyHits / totalSamples,
       expectationEnergy: totalSampleEnergy / totalSamples,
       cvarEnergy: bestEntry ? bestEntry.energy : finalEnergy,
       bestMeasuredMask: 0,

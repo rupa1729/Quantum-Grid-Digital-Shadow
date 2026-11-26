@@ -521,11 +521,16 @@ export function runAllSolversSuite(params: {
       out.circuitDepth <= hardware.maxDepthBudget * 1.45 ||
       hardware.couplingTopology === 'all_to_all';
 
+    const bestSampledEnergy = out.sampleSummary?.bestMeasuredEnergy ?? out.achievedEnergy;
     return {
       algorithm: out.algorithm,
       category: meta.category,
       familyTag: out.algorithm === 'QAOA' ? `X-Mixer Ansatz (p=${p})` : meta.familyTag,
       approxRatio: roundTo(out.approxRatio, 4),
+      bestSampledRatio: roundTo(computeApproxRatio(bestSampledEnergy, eMinRef, eMaxRef), 4),
+      ...(out.sampleSummary
+        ? { groundStateProbability: roundTo(out.sampleSummary.groundStateProbability, 4) }
+        : {}),
       achievedEnergy: roundTo(out.achievedEnergy, 2),
       expectationEnergy: roundTo(out.expectationEnergy, 2),
       executionMode: out.executionMode,

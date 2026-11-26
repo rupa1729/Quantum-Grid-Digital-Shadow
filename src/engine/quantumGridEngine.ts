@@ -33,6 +33,7 @@ import {
 } from '../constants';
 import {
   bitsToString,
+  applyFeederPenaltyFloor,
   buildFullQuboProblem,
   computeApproxRatio,
   computeExactSpectrum,
@@ -1088,7 +1089,7 @@ function buildTopologyQubo(
     return roundTo(overloadBias + renBonus + batBonus + vBonus, 2);
   });
 
-  const edgeTerms: { i: number; j: number; qij: number }[] = [];
+  const rawEdgeTerms: { i: number; j: number; qij: number; flowRatio: number }[] = [];
   for (const edge of topology.edges) {
     const i = indexById.get(edge.source);
     const j = indexById.get(edge.target);
@@ -1099,8 +1100,11 @@ function buildTopologyQubo(
       thermalOverload * nMinus1 * (0.45 + flowRatio * 0.78) * (0.72 + edge.resistanceOhm * 6.5),
       2
     );
-    edgeTerms.push({ i, j, qij });
+    rawEdgeTerms.push({ i, j, qij, flowRatio });
   }
+  const edgeTerms = constraints.includes('thermal_limits')
+    ? applyFeederPenaltyFloor(linearTerms, rawEdgeTerms)
+    : rawEdgeTerms.map(({ i, j, qij }) => ({ i, j, qij }));
   return buildFullQuboProblem(n, linearTerms, edgeTerms);
 }
 

@@ -11,7 +11,7 @@ import {
   scoreMeasuredCountsAgainstMicrogrid,
 } from './qiskitExecutor';
 import { buildFullMicrogridQuboProblem, generateMicrogridTopology } from '../src/engine/quboSolverEngine';
-import { quboToIsing } from '../src/engine/realQuantumSolvers';
+import { computeExactSpectrum, maskToBits, quboToIsing } from '../src/engine/realQuantumSolvers';
 import { NOMINAL_CLIMATE_CONDITIONS } from '../src/constants';
 
 test('buildOpenQasm3Circuit emits valid OpenQASM 3.0 with exact qubits, RZZ decomposition, and BF-DCQO counterdiabatic RY', () => {
@@ -318,4 +318,45 @@ test('extractAllPubCountsFromIbmRestResult decodes all 5 PUBs from both RuntimeE
   assert.equal(decodedPlain.length, 5);
   assert.equal(decodedPlain[0]['010101'], 2);
   assert.equal(decodedPlain[3]['110011'], 1);
+});
+
+test('scoreMeasuredCountsAgainstMicrogrid completes nodes beyond the executed qubits greedily (no tiling) and measures ratios on n > 12 grids', () => {
+  const topo = generateMicrogridTopology(24, 0.35, NOMINAL_CLIMATE_CONDITIONS);
+  const { problem } = buildFullMicrogridQuboProblem(topo, NOMINAL_CLIMATE_CONDITIONS, ['thermal_limits']);
+  const nQubits = 20;
+  const allOn = '1'.repeat(nQubits);
+  const alt = '10'.repeat(nQubits / 2);
+
+  const scored = scoreMeasuredCountsAgainstMicrogrid({
+    rawCounts: { [allOn]: 700, [alt]: 300 },
+    topology: topo,
+    climate: NOMINAL_CLIMATE_CONDITIONS,
+    problem,
+    nQubits,
+    littleEndian: true,
+  });
+
+  assert.equal(scored.truncated, true);
+  assert.ok(scored.approxRatio >= 0 && scored.approxRatio <= 1);
+  assert.notEqual(scored.approxRatio, 0.85, 'ratio must be measured, not the old hard-coded fallback');
+  assert.ok(scored.groundStateProbability >= 0 && scored.groundStateProbability <= 1);
+  assert.equal(scored.topBitstrings.length, 2);
+});
+
+test('scoreMeasuredCountsAgainstMicrogrid reports groundStateProbability from the exact 2^n spectrum for n <= 12', () => {
+  const topo = generateMicrogridTopology(6, 0.35, NOMINAL_CLIMATE_CONDITIONS);
+  const { problem } = buildFullMicrogridQuboProblem(topo, NOMINAL_CLIMATE_CONDITIONS, ['thermal_limits']);
+  const spec = computeExactSpectrum(problem);
+  const groundKey = maskToBits(spec.bestMask, 6).join('').split('').reverse().join('');
+  const scored = scoreMeasuredCountsAgainstMicrogrid({
+    rawCounts: { [groundKey]: 600, '000000': 400 },
+    topology: topo,
+    climate: NOMINAL_CLIMATE_CONDITIONS,
+    problem,
+    nQubits: 6,
+    littleEndian: true,
+  });
+  assert.equal(scored.truncated, false);
+  assert.equal(scored.approxRatio, 1);
+  assert.ok(Math.abs(scored.groundStateProbability - 0.6) < 1e-9);
 });

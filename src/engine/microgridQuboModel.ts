@@ -6,6 +6,7 @@ import type {
 } from '../types/grid';
 import {
   type FullQuboProblem,
+  applyFeederPenaltyFloor,
   buildFullQuboProblem,
 } from './realQuantumSolvers';
 
@@ -116,7 +117,7 @@ export function buildFullMicrogridQuboProblem(
 
   // Quadratic couplings Q_ij: thermal congestion & impedance penalty on shared feeders
   // Scales nonlinearly with flowRatio^2 and incorporates series reactance X_ij when provided.
-  const edgeTerms: { i: number; j: number; qij: number }[] = [];
+  const rawEdgeTerms: { i: number; j: number; qij: number; flowRatio: number }[] = [];
   for (const edge of topology.edges) {
     const i = indexById.get(edge.source);
     const j = indexById.get(edge.target);
@@ -134,8 +135,14 @@ export function buildFullMicrogridQuboProblem(
         (0.65 + effectiveImpedance * 7.0),
       2
     );
-    edgeTerms.push({ i, j, qij: coupling });
+    rawEdgeTerms.push({ i, j, qij: coupling, flowRatio });
   }
+
+  // Thermal/capacity floor: on near-limit feeders, co-dispatching both endpoints must never beat
+  // dispatching the better single endpoint (only active when the thermal limit constraint is selected).
+  const edgeTerms = constraints.includes('thermal_limits')
+    ? applyFeederPenaltyFloor(linearTerms, rawEdgeTerms)
+    : rawEdgeTerms.map(({ i, j, qij }) => ({ i, j, qij }));
 
   const problem = buildFullQuboProblem(n, linearTerms, edgeTerms);
 
