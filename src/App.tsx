@@ -1,5 +1,6 @@
 import { PulsingDot } from './components/PulsingDot';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Menu, Moon, Sun, Zap } from 'lucide-react';
 import type {
   BackendRuntimeStatus,
@@ -71,6 +72,13 @@ const INITIAL_LIVE_SNAPSHOT = buildTopologyFromLiveSlot(
   INITIAL_LIVE_PAYLOAD.currentSlotIndex
 );
 
+/** Synchronously mirrors the theme onto <html> so class and color-scheme never disagree with React state. */
+function applyThemeToDocument(dark: boolean): void {
+  const root = document.documentElement;
+  root.classList.toggle('dark', dark);
+  root.style.colorScheme = dark ? 'dark' : 'light';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -86,7 +94,7 @@ export default function App() {
   const pendingThemeRef = useRef<boolean | null>(null);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
+    applyThemeToDocument(isDark);
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
     } catch {
@@ -266,8 +274,17 @@ export default function App() {
 
   const handleCommitThemeTurn = useCallback(() => {
     if (pendingThemeRef.current !== null) {
-      setIsDark(pendingThemeRef.current);
+      const next = pendingThemeRef.current;
       pendingThemeRef.current = null;
+      const root = document.documentElement;
+      // Freeze every CSS transition so no panel lags behind <html>/<body> mid-switch.
+      root.classList.add('theme-switching');
+      applyThemeToDocument(next);
+      // Commit React state in the same frame, while the overlay still fully covers the page.
+      flushSync(() => setIsDark(next));
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => root.classList.remove('theme-switching'))
+      );
     }
   }, []);
 
@@ -622,7 +639,7 @@ export default function App() {
         };
 
   return (
-    <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-[#161616] text-slate-900 dark:text-[#F4F4F4] transition-colors">
+    <div className="min-h-screen flex bg-[#F8FAFC] dark:bg-[#161616] text-slate-900 dark:text-[#F4F4F4]">
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}

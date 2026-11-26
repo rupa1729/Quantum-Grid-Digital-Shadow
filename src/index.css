@@ -11,11 +11,13 @@
     font-family: var(--font-sans);
     background-color: #f8fafc;
     color: #0f172a;
+    color-scheme: light;
   }
 
   html.dark {
     background-color: #161616;
     color: #f4f4f4;
+    color-scheme: dark;
   }
 
   h1,
@@ -66,4 +68,11 @@
     transform: none;
     transition: none;
   }
+}
+
+/* Applied for the instant of a theme switch so Dark <-> Light is identical and flash-free */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
 }

@@ -460,8 +460,8 @@ export function OverviewView({
       </section>
 
       {/* Main Grid Topology + Real-Time Alerts Split */}
-      <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        <div className="xl:col-span-8 rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
+      <section className="space-y-6">
+        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-[#393939]">
             <div>
               <h2 className="text-base font-semibold text-slate-900 dark:text-[#F4F4F4]">
@@ -591,7 +591,7 @@ export function OverviewView({
               isDark={isDark}
               nodeSizeMode={nodeSizeMode}
               onSelectNode={onInspectNode}
-              heightClass="h-[430px]"
+              heightClass="h-[500px] lg:h-[540px]"
             />
           ) : (
             <D3GridVisualizer
@@ -601,13 +601,13 @@ export function OverviewView({
               isDark={isDark}
               nodeSizeMode={nodeSizeMode}
               onSelectNode={onInspectNode}
-              heightClass="h-[430px]"
+              heightClass="h-[500px] lg:h-[540px]"
             />
           )}
         </div>
 
         {/* Real-Time Alerts Panel */}
-        <div className="xl:col-span-4 rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
+        <div className="rounded-md border border-slate-200 dark:border-[#393939] bg-white dark:bg-[#262626] p-5">
           <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-[#393939]">
             <h2 className="text-base font-semibold text-slate-900 dark:text-[#F4F4F4]">
               Real-Time Grid Alerts
@@ -617,7 +617,7 @@ export function OverviewView({
             </span>
           </div>
 
-          <div className="mt-3 flex items-center gap-1 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#161616] p-0.5">
+          <div className="mt-3 flex w-full sm:max-w-md items-center gap-1 rounded-md border border-slate-200 dark:border-[#525252] bg-slate-50 dark:bg-[#161616] p-0.5">
             {(['all', 'alarming', 'warning', 'resolved'] as const).map((sev) => (
               <button
                 key={sev}
@@ -634,14 +634,14 @@ export function OverviewView({
             ))}
           </div>
 
-          <div className="mt-3 divide-y divide-slate-100 dark:divide-[#393939] max-h-[435px] overflow-y-auto pr-1">
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[560px] overflow-y-auto pr-1">
             {filteredAlerts.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500 dark:text-[#A8A8A8]">
+              <div className="col-span-full py-10 text-center text-xs text-slate-500 dark:text-[#A8A8A8]">
                 No alerts in this category. All monitored buses are operating smoothly.
               </div>
             ) : (
               filteredAlerts.map((alert) => (
-                <div key={alert.id} className="py-3 space-y-1.5">
+                <div key={alert.id} className="card-interactive rounded-md border border-slate-200 dark:border-[#393939] bg-slate-50/70 dark:bg-[#1E1E1E] p-3.5 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <StatusIndicator status={alert.severity} compact badgeStyle />
                     <span className="text-[11px] font-mono text-slate-400 dark:text-[#8D8D8D] tabular-nums">
