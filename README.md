@@ -1,7 +1,7 @@
-> [!Tip]
-> 📊 **Project Slide Deck:** [View the Digital QGrid Twin (WattsUp) Presentation](https://docs.google.com/presentation/d/1Ka5bg9luGJZCkU4buXft_brVGNEzcjJj/edit?usp=sharing&ouid=106858093692005215324&rtpof=true&sd=true
-)
-
+> [!TIP]
+> 📊 **Project Slide Deck:** [View the Digital QGrid Twin (WattsUp) Presentation](https://docs.google.com/presentation/d/1Ka5bg9luGJZCkU4buXft_brVGNEzcjJj/edit?usp=sharing&ouid=106858093692005215324&rtpof=true&sd=true)
+>
+> 🚀 **Project Demo:** [View the Digital QGrid Twin (WattsUp) Working Prototype](https://drive.google.com/file/d/1yoVT08k4-JjWtnFibVixnRK1HXbqJRT-/view?usp=sharing)
 # Digital Q-Grid Twin — Quantum Microgrid Load Balancing & IBM Qiskit Lab
 
 **Digital Q-Grid Twin** is a full-stack quantum-assisted rural microgrid load-balancing digital twin and live **IBM Quantum Platform (SamplerV2)** execution studio built with React, TypeScript, Vite, Tailwind CSS, Three.js, D3, and Express.
